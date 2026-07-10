@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#1c2a4a" />
+    <title>Destructo</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="game-canvas" aria-label="Destructo 3D game"></div>
+      <div id="hud" class="hidden" aria-live="polite">
+        <div class="top-strip">
+          <section class="objective-card"><span class="eyebrow">OPERATION</span><strong id="objective">Destroy the enemy factory</strong></section>
+          <section class="team-card"><span id="squad-readout">SQUAD 1</span><span id="chips-readout">0 CHIPS</span><span id="buff-readout" class="buffs"></span></section>
+        </div>
+        <div id="boss-panel" class="boss-panel"><span>ENEMY FACTORY</span><div class="bar"><i id="boss-fill"></i></div></div>
+        <div id="crosshair" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><b></b></div>
+        <div id="damage-numbers" aria-hidden="true"></div>
+        <div id="info-panel" class="info-panel hidden" aria-hidden="true"></div>
+        <div id="interaction" class="interaction hidden"></div>
+        <div id="toast" class="toast hidden"></div>
+        <div class="bottom-strip">
+          <section class="vitals panel"><span class="portrait">D</span><div><label>HP <b><span id="hp-label">100</span> <span id="shield-label" class="shield"></span></b></label><div class="bar hp"><i id="hp-fill"></i></div><label>MP <b id="mp-label">50</b></label><div class="bar mp"><i id="mp-fill"></i></div></div></section>
+          <section class="weapon panel"><span id="weapon-name">COMBAT PISTOL</span><strong id="ammo-label">∞</strong><small id="ability-label">Q · TACTICAL SPRINT</small></section>
+          <section class="builder panel"><span>D-BUILDER</span><div id="builder-cells" class="builder-cells"></div><small>E · STACK &nbsp; F · MATERIALIZE</small></section>
+        </div>
+      </div>
+      <div id="screen" class="screen"></div>
+      <div id="damage-flash"></div>
+      <div id="mobile-controls" class="hidden" aria-hidden="true"><div id="move-stick"></div><div id="aim-stick"></div></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

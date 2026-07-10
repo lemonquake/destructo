@@ -1,0 +1,32 @@
+{
+  "name": "destructo",
+  "version": "1.0.0",
+  "description": "Destructo — a web-native low-poly action RTS inspired by classic squad tactics games.",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "test": "vitest run"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "cannon-es": "^0.20.0",
+    "gsap": "^3.15.0",
+    "howler": "^2.2.4",
+    "lil-gui": "^0.21.0",
+    "nipplejs": "^1.0.4",
+    "postprocessing": "^6.39.2",
+    "stats.js": "^0.17.0",
+    "three": "^0.185.1",
+    "three-mesh-bvh": "^0.9.11",
+    "three-pathfinding": "^1.3.0",
+    "zdog": "^1.1.3"
+  },
+  "devDependencies": {
+    "vite": "^8.1.4",
+    "vitest": "^4.1.10"
+  }
+}
