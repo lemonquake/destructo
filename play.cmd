@@ -28,7 +28,7 @@ if %errorlevel% neq 0 (
     echo.
     echo Node.js is required to run the local game server.
     echo.
-    set /p "install_node=Would you like to install Node.js automatically using Windows Package Manager? (y/n): "
+    set /p "install_node=Would you like to install Node.js automatically using Windows Package Manager? [y/n]: "
     if /i "!install_node!"=="y" (
         echo.
         echo [INFO] Running: winget install OpenJS.NodeJS
@@ -37,7 +37,7 @@ if %errorlevel% neq 0 (
         echo.
         echo =======================================================================
         echo [SUCCESS] Installation initiated. 
-        echo Please restart this launcher (double-click play.cmd again) after 
+        echo Please restart this launcher [double-click play.cmd again] after 
         echo the Node.js installation is complete.
         echo =======================================================================
     ) else (
@@ -53,7 +53,7 @@ if %errorlevel% neq 0 (
 :: 2. Check if dependencies are installed (node_modules folder)
 if not exist "%~dp0node_modules" (
     echo [INFO] First-time setup: Game dependencies are missing.
-    echo [INFO] Installing required libraries (this might take a moment)...
+    echo [INFO] Installing required libraries [this might take a moment]...
     echo.
     cd /d "%~dp0"
     call npm install
