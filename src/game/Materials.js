@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 
 const textureColors = { grass: ['#5cc24f', '#8ae06a', '#3f9c3f'], dirt: ['#a5673f', '#c98a55', '#7a4c31'], stone: ['#8d8ba1', '#b9b5c9', '#615f78'], water: ['#28b1e6', '#74e2e8', '#1a78b8'], metal: ['#7a8492', '#aeb6bf', '#4a5464'], wood: ['#9c5a30', '#c98846', '#65391f'], uniform: ['#c4c9c6', '#98a09e', '#e2ded2'] };
+const MAP_TEXTURES = ['asphalt','road_lines','neon_concrete','city_glass','urban_brick','corrugated_steel','rooftop','sidewalk','jungle_floor','tree_bark','moss_stone','root_mud','volcanic_rock','lava_crust','summit_stone','vehicle_metal'];
 
 function makeCanvas(size = 128) { const canvas = document.createElement('canvas'); canvas.width = canvas.height = size; return [canvas, canvas.getContext('2d')]; }
 function seededRandom(seed) { return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296; }
@@ -75,6 +76,116 @@ const BUILDING_PAINTERS = {
     for (let i = 0; i < 16; i++) { ctx.strokeStyle = ['#ff7b2e', '#ffb13c', '#ff4d1c'][Math.floor(r() * 3)]; ctx.lineWidth = 2 + r() * 4; ctx.globalAlpha = .8; ctx.beginPath(); let x = r() * 128, y = r() * 128; ctx.moveTo(x, y); for (let s = 0; s < 5; s++) { x += (r() - .5) * 44; y += (r() - .5) * 44; ctx.lineTo(x, y); } ctx.stroke(); }
     ctx.globalAlpha = 1;
   },
+  tech_roof(ctx, r) {
+    ctx.fillStyle = '#b0b5be'; ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#6e737d'; ctx.lineWidth = 3;
+    for (let i = 0; i <= 128; i += 32) {
+      ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, 128); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, i); ctx.lineTo(128, i); ctx.stroke();
+    }
+    for (let y = 0; y < 4; y++) {
+      for (let x = 0; x < 4; x++) {
+        ctx.fillStyle = r() > 0.5 ? '#c3c8d2' : '#9ea3ac';
+        ctx.fillRect(x * 32 + 3, y * 32 + 3, 26, 26);
+        ctx.fillStyle = '#5c6068';
+        ctx.fillRect(x * 32 + 6, y * 32 + 6, 2, 2);
+        ctx.fillRect(x * 32 + 24, y * 32 + 6, 2, 2);
+      }
+    }
+  },
+  tech_pillar(ctx, r) {
+    ctx.fillStyle = '#9ea3ac'; ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = '#c3c8d2'; ctx.fillRect(16, 0, 96, 128);
+    ctx.strokeStyle = '#5c6068'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(16, 128); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(112, 0); ctx.lineTo(112, 128); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(64, 0); ctx.lineTo(64, 128); ctx.stroke();
+    for (let y = 16; y < 128; y += 32) {
+      ctx.fillStyle = '#4a4d54'; ctx.fillRect(16, y, 96, 4);
+      ctx.fillStyle = '#d9dce3';
+      ctx.beginPath(); ctx.arc(32, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(96, y + 2, 2, 0, Math.PI * 2); ctx.fill();
+    }
+  },
+  crate_brown(ctx, r) {
+    ctx.fillStyle = '#9c5a30'; ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#65391f'; ctx.lineWidth = 2;
+    for (let y = 16; y < 128; y += 16) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke();
+    }
+    ctx.fillStyle = '#824924';
+    ctx.beginPath(); ctx.moveTo(14, 14); ctx.lineTo(24, 14); ctx.lineTo(114, 104); ctx.lineTo(114, 114); ctx.lineTo(104, 114); ctx.lineTo(14, 24); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(114, 14); ctx.lineTo(114, 24); ctx.lineTo(24, 114); ctx.lineTo(14, 114); ctx.lineTo(14, 104); ctx.lineTo(104, 14); ctx.fill();
+    ctx.fillStyle = '#3a3c42';
+    ctx.fillRect(0, 0, 128, 14);
+    ctx.fillRect(0, 114, 128, 14);
+    ctx.fillRect(0, 14, 14, 100);
+    ctx.fillRect(114, 14, 14, 100);
+    ctx.fillStyle = '#9ea0a6';
+    for (const [x, y] of [[7, 7], [121, 7], [7, 121], [121, 121], [7, 64], [121, 64], [64, 7], [64, 121]]) {
+      ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+    }
+  },
+  crate_yellow(ctx, r) {
+    ctx.fillStyle = '#ffd23f'; ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = '#2c2e35';
+    for (let i = 0; i < 4; i++) {
+      ctx.beginPath();
+      ctx.moveTo(30 + i * 20, 20);
+      ctx.lineTo(45 + i * 20, 20);
+      ctx.lineTo(20 + i * 20, 108);
+      ctx.lineTo(5 + i * 20, 108);
+      ctx.fill();
+    }
+    ctx.strokeStyle = '#c79415'; ctx.lineWidth = 2;
+    ctx.strokeRect(20, 20, 88, 88);
+    ctx.fillStyle = '#2c2e35';
+    ctx.fillRect(0, 0, 128, 16);
+    ctx.fillRect(0, 112, 128, 16);
+    ctx.fillRect(0, 16, 16, 96);
+    ctx.fillRect(112, 16, 16, 96);
+    ctx.fillStyle = '#e5b512';
+    for (const [x, y] of [[8, 8], [120, 8], [8, 120], [120, 120]]) {
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  },
+  crate_blue(ctx, r) {
+    ctx.fillStyle = '#102a54'; ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#00bbff'; ctx.lineWidth = 3;
+    ctx.strokeRect(24, 24, 80, 80);
+    ctx.beginPath();
+    ctx.moveTo(24, 24); ctx.lineTo(8, 8);
+    ctx.moveTo(104, 24); ctx.lineTo(120, 8);
+    ctx.moveTo(24, 104); ctx.lineTo(8, 120);
+    ctx.moveTo(104, 104); ctx.lineTo(120, 120);
+    ctx.stroke();
+    ctx.fillStyle = '#a4eeff';
+    ctx.beginPath(); ctx.arc(64, 64, 12, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#7a8492';
+    ctx.fillRect(0, 0, 128, 10);
+    ctx.fillRect(0, 118, 128, 10);
+    ctx.fillRect(0, 10, 10, 108);
+    ctx.fillRect(118, 10, 10, 108);
+  },
+  crate_red(ctx, r) {
+    ctx.fillStyle = '#1e1a1d'; ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#ff3344'; ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(20, 64); ctx.lineTo(50, 40); ctx.lineTo(78, 88); ctx.lineTo(108, 64);
+    ctx.stroke();
+    ctx.fillStyle = '#ffaabb';
+    ctx.beginPath(); ctx.arc(50, 40, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(78, 88, 3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#d9a928';
+    ctx.fillRect(0, 0, 128, 14);
+    ctx.fillRect(0, 114, 128, 14);
+    ctx.fillRect(0, 14, 14, 100);
+    ctx.fillRect(114, 14, 14, 100);
+    ctx.fillStyle = '#fff0c0';
+    for (const [x, y] of [[7, 7], [121, 7], [7, 121], [121, 121]]) {
+      ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+  },
 };
 
 // ── 10 destructo skin textures (wrapped around unit bodies) ──────────────────
@@ -94,6 +205,14 @@ const SKIN_PAINTERS = {
 export const BUILDING_TEXTURES = Object.freeze(Object.keys(BUILDING_PAINTERS));
 export const SKIN_TEXTURES = Object.freeze(Object.keys(SKIN_PAINTERS));
 
+// Paint the exact procedural uniform used in battle into setup-screen canvases.
+export function paintSkinPreview(canvas, name) {
+  const painter = SKIN_PAINTERS[name] || SKIN_PAINTERS.camo;
+  canvas.width = canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  painter(ctx, seededRandom(name.length * 7919 + name.charCodeAt(0) * 131));
+}
+
 function paintTexture(name, painter) {
   const [canvas, ctx] = makeCanvas(); painter(ctx, seededRandom(name.length * 7919 + name.charCodeAt(0) * 131)); return toTexture(canvas);
 }
@@ -107,36 +226,68 @@ export class MaterialLibrary {
       catch { this.textures[kind] = fallbackTexture(kind); }
       const t = this.textures[kind]; t.wrapS = t.wrapT = THREE.MirroredRepeatWrapping; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = Math.min(4, this.renderer.capabilities.getMaxAnisotropy());
     }));
+    await Promise.all(MAP_TEXTURES.map(async name => {
+      try {
+        const t = await loader.loadAsync(`/assets/textures/maps/${name}.webp`);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+        t.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy()); this.textures[name] = t;
+      } catch { this.textures[name] = fallbackTexture('stone'); }
+    }));
     for (const [name, painter] of Object.entries(BUILDING_PAINTERS)) this.textures[name] = paintTexture(name, painter);
     for (const [name, painter] of Object.entries(SKIN_PAINTERS)) this.textures[`skin_${name}`] = paintTexture(name, painter);
+    // The production jungle tile is authored as a high-resolution raster asset;
+    // the remaining nine deterministic painters are kept as fast seamless game textures.
+    try { const camo = await loader.loadAsync('/assets/textures/uniforms/camo.png'); camo.wrapS=camo.wrapT=THREE.RepeatWrapping;camo.colorSpace=THREE.SRGBColorSpace;camo.anisotropy=Math.min(4,this.renderer.capabilities.getMaxAnisotropy());this.textures.skin_camo=camo; } catch { /* procedural camo remains active */ }
     this.materials.grass = this.standard('grass', 0x8fe36c, 7);
     this.materials.dirt = this.standard('dirt', 0xe0aa8c, 6);
     this.materials.stone = this.standard('stone', 0xffffff, 4);
     this.materials.metal = this.standard('metal', 0xffffff, 3, .8);
     this.materials.wood = this.standard('wood', 0xffffff, 2);
+    this.materials.treeCrown = this.color(0x4bb84f, { roughness: 0.85 });
     Object.assign(this, this.materials);
     return this;
   }
   standard(kind, color, repeat = 1, roughness = 1) {
     const map = this.textures[kind]; map.repeat.set(repeat, repeat);
-    return kind === 'grass' || kind === 'dirt'
+    // grass is lit + flat-shaded so the terrain hills read as low-poly facets
+    return kind === 'dirt'
       ? new THREE.MeshBasicMaterial({ map, color })
       : new THREE.MeshStandardMaterial({ map, color, roughness, metalness: kind === 'metal' ? .35 : 0, flatShading: true });
   }
   // material for buildings/structures using one of the 10 generated textures
   building(name, options = {}) {
     const map = this.textures[name] || this.textures.stone;
-    const mat = new THREE.MeshStandardMaterial({ map, roughness: .9, flatShading: true, ...options });
-    if (options.repeat) { mat.map = map.clone(); mat.map.needsUpdate = true; mat.map.repeat.set(options.repeat, options.repeat); delete mat.repeat; }
+    const { repeat, ...materialOptions } = options;
+    const mat = new THREE.MeshStandardMaterial({ map, roughness: .9, flatShading: true, ...materialOptions });
+    if (repeat) { mat.map = map.clone(); mat.map.needsUpdate = true; mat.map.repeat.set(repeat, repeat); }
     this.dynamicMaterials.push(mat); return mat;
   }
   // skin-wrapped material for destructo bodies, tinted toward team color
   skin(name, teamColor) {
     const map = this.textures[`skin_${name}`];
-    const mat = new THREE.MeshStandardMaterial({ map, color: 0xffffff, emissive: teamColor, emissiveIntensity: .1, flatShading: true, roughness: .9 });
+    const mat = new THREE.MeshStandardMaterial({ map, color: 0xffffff, flatShading: true, roughness: .9 });
     this.dynamicMaterials.push(mat); return mat;
   }
   color(color, options = {}) { const mat = new THREE.MeshStandardMaterial({ color, flatShading: true, roughness: .85, ...options }); this.dynamicMaterials.push(mat); return mat; }
+  teamTextured(name, color, repeat = 1) {
+    const map = this.textures[name] || this.textures.stone;
+    const mat = new THREE.MeshStandardMaterial({ map, color, roughness: .6, metalness: .4, flatShading: true });
+    if (repeat !== 1) { mat.map = map.clone(); mat.map.needsUpdate = true; mat.map.repeat.set(repeat, repeat); }
+    this.dynamicMaterials.push(mat); return mat;
+  }
+  crate(typeId) {
+    const map = this.textures[`crate_${typeId}`] || this.textures.stone;
+    const isRareOrLegendary = typeId === 'blue' || typeId === 'red';
+    const mat = new THREE.MeshStandardMaterial({
+      map,
+      roughness: isRareOrLegendary ? 0.35 : 0.72,
+      metalness: typeId === 'brown' ? 0.15 : 0.75,
+      flatShading: true,
+      emissive: isRareOrLegendary ? (typeId === 'blue' ? 0x0c4780 : 0x800c14) : 0x000000,
+      emissiveIntensity: isRareOrLegendary ? 0.35 : 0
+    });
+    this.dynamicMaterials.push(mat); return mat;
+  }
   team(color) { const map = this.textures.uniform; map.repeat.set(3, 3); const mat = new THREE.MeshStandardMaterial({ map, color, emissive: color, emissiveIntensity: .22, flatShading: true, roughness: .9 }); this.dynamicMaterials.push(mat); return mat; }
   dispose() { Object.values(this.materials).forEach(m => m.dispose()); this.dynamicMaterials.forEach(m => m.dispose()); Object.values(this.textures).forEach(t => t.dispose()); }
 }

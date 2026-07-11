@@ -1,7 +1,7 @@
 import { SETTINGS_DEFAULTS } from '../data/gameData.js';
 
 const KEY = 'destructo-save-v1';
-const DEFAULT_SAVE = { chips: 750, missionsWon: 0, totalKills: 0, blueprints: ['pistol', 'scout'], gear: [], upgrades: {}, cosmetics: [], equipped: { hat: null, skin: null }, settings: SETTINGS_DEFAULTS };
+const DEFAULT_SAVE = { chips: 750, missionsWon: 0, totalKills: 0, mmr: 1000, rankedWins: 0, rankedLosses: 0, aiProfiles: [], betHistory: [], blueprints: ['pistol', 'scout'], gear: [], upgrades: {}, cosmetics: [], equipped: { hat: null, skin: null }, settings: SETTINGS_DEFAULTS };
 
 export class SaveSystem {
   constructor() { this.data = this.load(); }
@@ -22,5 +22,7 @@ export class SaveSystem {
   equipCosmetic(kind, id) { this.data.equipped[kind] = this.data.equipped[kind] === id ? null : id; this.commit(); }
   setSetting(name, value) { this.data.settings[name] = value; this.commit(); }
   recordMission(won, kills, reward) { if (won) this.data.missionsWon += 1; this.data.totalKills += kills; this.data.chips += reward; this.commit(); }
+  setLeague(aiProfiles, mmrDelta = 0, won = null) { this.data.aiProfiles = aiProfiles; this.data.mmr = Math.max(100, Math.round((this.data.mmr || 1000) + mmrDelta)); if (won === true) this.data.rankedWins++; else if (won === false) this.data.rankedLosses++; this.commit(); }
+  recordBet(entry) { this.data.betHistory = [entry, ...(this.data.betHistory || [])].slice(0, 20); this.commit(); }
   reset() { this.data = structuredClone(DEFAULT_SAVE); this.commit(); }
 }

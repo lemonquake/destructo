@@ -8,21 +8,24 @@ const makeWorld = (crates = []) => ({ scene: { remove: vi.fn() }, crates, builde
 
 describe('Team Buddies combo matrix (2x2 footprint, 3 high)', () => {
   it.each([
-    [[0], 'light'],
-    [[0, 1], 'medium'],
+    [[0], 'pistol'],
+    [[0, 1], 'grenadelauncher'],
+    [[0, 3], 'needle'],
     [[0, 4], 'buddy'],
     [[0, 4, 8], 'elite'],
-    [[0, 1, 2, 3], 'heavyw'],
-    [[0, 1, 4, 5], 'special'],
-    [[0, 1, 4, 5, 8, 9], 'superw'],
-    [[0, 1, 2, 3, 4, 5, 6, 7], 'tank'],
-    [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'megatank'],
+    [[0, 1, 4], 'smg'],
+    [[0, 4, 1, 2], 'tesla'],
+    [[0, 1, 4, 5], 'rocket'],
+    [[0, 4, 3, 7], 'plasma'],
+    [[0, 1, 2, 3], 'machinegun'],
+    [[0, 4, 8, 1, 5, 9], 'shotgun'],
+    [[0, 4, 1, 5, 2, 6], 'special'],
+    [[0, 1, 2, 3, 4, 5, 6, 7], 'apc'],
+    [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], 'tank'],
   ])('recognizes occupancy %j as %s', (indices, id) => expect(identifyCombo(cells(...indices))?.id).toBe(id));
 
   it.each([
-    [[0, 3], 'diagonal towers'],
     [[4], 'floating crate'],
-    [[0, 1, 4], 'uneven towers'],
     [[0, 4, 1, 5, 8], 'uneven tall towers'],
   ])('rejects %j (%s)', indices => expect(identifyCombo(cells(...indices))).toBeNull());
 });
@@ -51,9 +54,22 @@ describe('DBuilder stacking pad', () => {
   it('preserves a fused stack when the build is rejected', () => {
     const crate = makeCrate(), world = makeWorld([crate]), builder = new DBuilder(world, {}, () => false, 'blue');
     builder.place(crate);
-    expect(builder.manufacture()?.id).toBe('light');
+    expect(builder.manufacture()?.id).toBe('pistol');
     expect(builder.count()).toBe(1);
     expect(world.scene.remove).not.toHaveBeenCalled();
+  });
+  it('gives back the top crate of the nearest column until it is combined', () => {
+    const world = makeWorld(), builder = new DBuilder(world, {}, () => true, 'blue');
+    const a = makeCrate(), b = makeCrate();
+    builder.place(a, new THREE.Vector3()); builder.place(b, a.group.position);
+    const taken = builder.takeBack(a.group.position);
+    expect([a, b]).toContain(taken);
+    expect(taken.placed).toBe(false);
+    expect(taken.solid).toBe(false);
+    expect(builder.count()).toBe(1);
+    // nothing left after combining: manufacture clears the pad
+    builder.manufacture();
+    expect(builder.takeBack(new THREE.Vector3())).toBeNull();
   });
   it('consumes an accepted stack exactly once', () => {
     const crate = makeCrate(), world = makeWorld([crate]), builder = new DBuilder(world, {}, () => true, 'blue');

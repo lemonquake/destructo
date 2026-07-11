@@ -3,7 +3,7 @@ import nipplejs from 'nipplejs';
 export class Input {
   constructor(domElement) {
     this.domElement = domElement;
-    this.keys = new Set(); this.pressed = new Set(); this.mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false, alt: false, right: false, rightStart: 0 };
+    this.keys = new Set(); this.pressed = new Set(); this.mouse = { x: innerWidth / 2, y: innerHeight / 2, down: false, alt: false, right: false, rightStart: 0, rightPressed: false, dx: 0, dy: 0, wheelDelta: 0 };
     this.moveAxis = { x: 0, y: 0 }; this.aimAxis = { x: 0, y: 0 };
     this.enabled = false; this.mobile = matchMedia('(pointer: coarse)').matches;
     this.bind();
@@ -12,11 +12,17 @@ export class Input {
     addEventListener('keydown', e => { if (this.enabled && ['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); if (!this.keys.has(e.code)) this.pressed.add(e.code); this.keys.add(e.code); });
     addEventListener('keyup', e => this.keys.delete(e.code));
     addEventListener('blur', () => { this.keys.clear(); this.mouse.down = false; this.mouse.right = false; });
-    this.domElement.addEventListener('pointermove', e => { this.mouse.x = e.clientX; this.mouse.y = e.clientY; });
+    this.domElement.addEventListener('pointermove', e => {
+      if (this.mouse.down || this.mouse.right || document.pointerLockElement) {
+        this.mouse.dx += e.movementX;
+        this.mouse.dy += e.movementY;
+      }
+      this.mouse.x = e.clientX; this.mouse.y = e.clientY;
+    });
     this.domElement.addEventListener('pointerdown', e => {
       if (!this.enabled) return;
       if (e.button === 0) this.mouse.down = true;
-      if (e.button === 2) { this.mouse.right = true; this.mouse.rightStart = performance.now(); }
+      if (e.button === 2) { this.mouse.right = true; this.mouse.rightStart = performance.now(); this.mouse.rightPressed = true; }
     });
     addEventListener('pointerup', e => {
       if (e.button === 0) this.mouse.down = false;
@@ -26,6 +32,9 @@ export class Input {
         this.mouse.right = false;
       }
     });
+    addEventListener('wheel', e => {
+      this.mouse.wheelDelta = e.deltaY;
+    }, { passive: true });
     this.domElement.addEventListener('contextmenu', e => e.preventDefault());
     if (this.mobile) this.setupMobile();
   }
@@ -44,5 +53,5 @@ export class Input {
     const length = Math.hypot(x, z) || 1; return { x: x / Math.max(1, length), z: z / Math.max(1, length) };
   }
   consume(code) { const hit = this.pressed.has(code); this.pressed.delete(code); return hit; }
-  endFrame() { this.pressed.clear(); }
+  endFrame() { this.pressed.clear(); this.mouse.rightPressed = false; this.mouse.dx = 0; this.mouse.dy = 0; this.mouse.wheelDelta = 0; }
 }
