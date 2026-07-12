@@ -43,6 +43,17 @@ export class AIController {
     if (agent.dead || agent.player || agent.type==='vehicle') return;
     agent.fireCooldown = Math.max(0, agent.fireCooldown - dt);
 
+    if(this.world.gameMode==='domination'&&agent.type==='unit'&&!agent.mountedTurret&&!agent.mountedBunker&&!agent.mountedMotorcycle){
+      const nearby=this.closest(agent,foes);if(nearby&&nearby.group.position.distanceToSquared(agent.group.position)<15*15){this.engage(agent,dt,nearby);return;}
+      agent.dominationDecision=Math.max(0,(agent.dominationDecision||0)-dt);
+      if(!agent.dominationTarget||agent.dominationDecision<=0||agent.dominationTarget.ownerTeam===agent.team){
+        agent.dominationDecision=2+Math.random()*2;
+        const candidates=(this.world.dominationTowers||[]).filter(t=>t.ownerTeam!==agent.team);
+        agent.dominationTarget=candidates.sort((a,b)=>a.position.distanceToSquared(agent.group.position)-b.position.distanceToSquared(agent.group.position))[0]||null;
+      }
+      const tower=agent.dominationTarget;if(tower){if(tower.position.distanceToSquared(agent.group.position)>tower.radius*tower.radius*.45)this.moveToward(agent,tower.position,dt,1.08);else this.settle(agent);return;}
+    }
+
     const weakEnemyTeam = this.findWeakEnemyTeam(agent.team);
     if (weakEnemyTeam) {
       const baseFactory = this.world.factories[weakEnemyTeam];

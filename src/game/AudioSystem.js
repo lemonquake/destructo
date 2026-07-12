@@ -1,153 +1,212 @@
 import { Howl, Howler } from 'howler';
 import * as THREE from 'three';
 
+export const MAX_ACTIVE_SFX = 48;
+
+const SOUND_PROFILES = {
+  button_click: { group: 'ui', priority: 4 },
+  change_team: { group: 'ui', priority: 4 },
+  change_texture: { group: 'ui', priority: 4 },
+  pickup: { group: 'ui', priority: 3 },
+  build: { group: 'ui', priority: 3 },
+  defeat: { group: 'voice', priority: 5 },
+  destructo_death: { group: 'voice', priority: 5 },
+  destructo_explosion_death: { group: 'voice', priority: 5 },
+  destructo_damaged: { group: 'voice', priority: 4 },
+  destructo_damaged_running: { group: 'voice', priority: 4 },
+  destructo_grunt: { group: 'voice', priority: 3 },
+  explosion: { group: 'explosion', priority: 4 },
+  pistol: { group: 'weapon', priority: 2 },
+  machinegun: { group: 'weapon', priority: 2 },
+  shotgun: { group: 'weapon', priority: 3 },
+  sniper: { group: 'weapon', priority: 3 },
+  grenade_launcher: { group: 'weapon', priority: 3 },
+  turret: { group: 'weapon', priority: 2 },
+  uzi: { group: 'weapon', priority: 2 },
+  step_rock: { group: 'movement', priority: 0 },
+  step_dirt: { group: 'movement', priority: 0 },
+  step_water: { group: 'movement', priority: 0 },
+  water_splash: { group: 'movement', priority: 1 }
+};
+
+const GROUP_LIMITS = { ui: 6, voice: 8, explosion: 8, weapon: 24, movement: 8, impact: 12 };
+const DEFAULT_PROFILE = { group: 'impact', priority: 1 };
+
 export class AudioSystem {
   constructor(volumeSlider = 0.55) {
     this.volumeSlider = volumeSlider;
     this.currentMusic = null;
     this.currentMusicSrc = null;
+    this.activeVoices = [];
+    this.nextVoiceSequence = 0;
+    this.resumePromise = null;
 
-    // Configured with panner attributes for spatial 3D audio
     const normalPanner = {
-      panningModel: 'HRTF',
-      refDistance: 35.0, // Match default top-down camera distance so focal point sounds are at 100% volume
-      rolloffFactor: 1.0,
-      maxDistance: 250,
-      distanceModel: 'inverse'
+      panningModel: 'HRTF', refDistance: 35, rolloffFactor: 1,
+      maxDistance: 250, distanceModel: 'inverse'
     };
-
     const explosionPanner = {
-      panningModel: 'HRTF',
-      refDistance: 60.0, // Explosions should have a larger range of audibility
-      rolloffFactor: 0.5,
-      maxDistance: 1000,
-      distanceModel: 'inverse'
+      panningModel: 'HRTF', refDistance: 60, rolloffFactor: .5,
+      maxDistance: 1000, distanceModel: 'inverse'
     };
+    // Howler's pool only limits finished nodes, not concurrent playback. The
+    // active voice budget below is what keeps large battles from exhausting
+    // the browser's Web Audio graph.
+    const sound = (file, options = normalPanner) => new Howl({ src: [`/sounds/${file}`], pool: 8, ...options });
+    const variants = files => files.map(file => sound(file));
 
-    // Load actual audio files with proper configuration
     this.sounds = {
-      button_click: new Howl({ src: ['/sounds/button_click.wav'] }),
-      change_team: new Howl({ src: ['/sounds/change_team.wav'] }),
-      change_texture: new Howl({ src: ['/sounds/change_texture.wav'] }),
-      destructo_death: new Howl({ src: ['/sounds/destructo_death.wav'], ...normalPanner }),
-      destructo_grunt: [
-        new Howl({ src: ['/sounds/destructo_grunt.wav'], ...normalPanner }),
-        new Howl({ src: ['/sounds/destructo_grunt2.wav'], ...normalPanner })
-      ],
-      destructo_hit: new Howl({ src: ['/sounds/destructo_hit1.wav'], ...normalPanner }),
-      explosion: new Howl({ src: ['/sounds/grenade_explosion.wav'], ...explosionPanner }),
-      grenade_launcher: new Howl({ src: ['/sounds/grenade_launcher.wav'], ...normalPanner }),
-      machinegun: new Howl({ src: ['/sounds/machinegun.wav'], ...normalPanner }),
-      metal_hit: [
-        new Howl({ src: ['/sounds/metal_hit1.wav'], ...normalPanner }),
-        new Howl({ src: ['/sounds/metal_hit2.wav'], ...normalPanner }),
-        new Howl({ src: ['/sounds/metal_hit3.wav'], ...normalPanner }),
-        new Howl({ src: ['/sounds/metal_hit4.wav'], ...normalPanner })
-      ],
-      pistol: new Howl({ src: ['/sounds/pistol.wav'], ...normalPanner }),
-      rock_hit: [
-        new Howl({ src: ['/sounds/rock_hit1.wav'], ...normalPanner }),
-        new Howl({ src: ['/sounds/rock_hit2.wav'], ...normalPanner })
-      ],
-      shotgun: new Howl({ src: ['/sounds/shotgun.wav'], ...normalPanner }),
-      sniper: new Howl({ src: ['/sounds/sniper.wav'], ...normalPanner }),
-      structure_death: new Howl({ src: ['/sounds/structure_death.wav'], ...normalPanner }),
-      turret: [
-        new Howl({ src: ['/sounds/turret1.wav'], ...normalPanner }),
-        new Howl({ src: ['/sounds/turret2.wav'], ...normalPanner })
-      ],
-      wood_hit: new Howl({ src: ['/sounds/wood_hit.wav'], ...normalPanner }),
-
-      destructo_bloodsplash: new Howl({ src: ['/sounds/destructo_bloodsplash.wav'], ...normalPanner }),
-      uzi: new Howl({ src: ['/sounds/uzi.wav'], ...normalPanner }),
-
-      // Real audio assets in place of default generated sounds
-      pickup: new Howl({ src: ['/sounds/change_texture.wav'] }),
-      build: new Howl({ src: ['/sounds/change_team.wav'] })
+      button_click: sound('button_click.wav', {}),
+      change_team: sound('change_team.wav', {}),
+      change_texture: sound('change_texture.wav', {}),
+      destructo_death: variants(['destructo_death.wav', 'destructo_death2.wav', 'destructo_death3.wav', 'destructo_death4.wav', 'destructo_death5.wav', 'destructo_death6.wav', 'destructo_death7.wav']),
+      destructo_explosion_death: sound('destructo_dies_from_explosion.wav'),
+      destructo_damaged: sound('destructo_damaged.wav'),
+      destructo_damaged_running: sound('destructo_damaged2.wav'),
+      destructo_grunt: variants(['destructo_grunt.wav', 'destructo_grunt2.wav']),
+      destructo_hit: sound('destructo_hit1.wav'),
+      destructo_bloodsplash: sound('destructo_bloodsplash.wav'),
+      defeat: sound('defeat.wav', {}),
+      explosion: sound('grenade_explosion.wav', explosionPanner),
+      grenade_launcher: sound('grenade_launcher.wav'),
+      machinegun: sound('machinegun.wav'),
+      metal_hit: variants(['metal_hit1.wav', 'metal_hit2.wav', 'metal_hit3.wav', 'metal_hit4.wav']),
+      pistol: sound('pistol.wav'),
+      rock_hit: variants(['rock_hit1.wav', 'rock_hit2.wav']),
+      shotgun: sound('shotgun.wav'),
+      sniper: sound('sniper.wav'),
+      structure_death: sound('structure_death.wav'),
+      turret: variants(['turret1.wav', 'turret2.wav']),
+      wood_hit: sound('wood_hit.wav'),
+      uzi: sound('uzi.wav'),
+      step_rock: variants(['step_rock.wav', 'step_rock2.wav']),
+      step_dirt: variants(['step_dirt.wav', 'step_dirt2.wav']),
+      step_water: variants(['step_water.wav', 'step_water2.wav']),
+      water_splash: sound('water_splash.wav'),
+      pickup: sound('change_texture.wav', {}),
+      build: sound('change_team.wav', {})
     };
   }
 
   play(name, pos = null, rate = 1) {
-    // If the second argument is a number, treat it as the rate parameter (supports legacy play(name, rate) calls)
-    if (typeof pos === 'number') {
-      rate = pos;
-      pos = null;
-    }
-
+    if (typeof pos === 'number') { rate = pos; pos = null; }
     const entry = this.sounds[name];
     if (!entry) return;
+    const clip = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry;
+    const profile = SOUND_PROFILES[name] || DEFAULT_PROFILE;
 
-    // Pick variation if it's an array
-    const sound = Array.isArray(entry) ? entry[Math.floor(Math.random() * entry.length)] : entry;
+    if (!this.makeVoiceRoom(profile)) return;
+    this.resumeAudioContext();
 
-    // Determine base scaling factor
-    let scale = 0.75; // Default for sounds (75% max volume)
-    if (['pistol', 'machinegun', 'shotgun', 'sniper', 'grenade_launcher', 'turret', 'uzi'].includes(name)) {
-      scale = 0.40; // Gunshot sounds scaled to max 40% volume
-    } else if (name === 'destructo_grunt') {
-      scale = 0.75 * 0.50; // Grunt sounds have a max volume of 50% of the sound volume
-    } else if (name === 'explosion') {
-      scale = 1.0; // Explosion sounds have 100% volume
-    }
+    let scale = .55;
+    if (['pistol', 'machinegun', 'shotgun', 'sniper', 'grenade_launcher', 'turret', 'uzi'].includes(name)) scale = .28;
+    else if (['step_rock', 'step_dirt', 'step_water'].includes(name)) scale = .20;
+    else if (['destructo_damaged', 'destructo_damaged_running', 'destructo_death', 'destructo_explosion_death', 'defeat'].includes(name)) scale = .38;
+    else if (name === 'explosion') scale = .45;
+    else if (name === 'water_splash') scale = .32;
+    else if (name === 'destructo_grunt') scale = .30;
 
-    const volume = this.volumeSlider * scale;
-    
-    // Play the sound
-    const id = sound.play();
-    sound.volume(volume, id);
-    sound.rate(rate, id);
-
-    // Apply spatial coordinates if position is supplied and has finite numeric properties
-    if (pos && typeof pos.x === 'number' && typeof pos.y === 'number' && typeof pos.z === 'number' && typeof sound.pos === 'function') {
-      sound.pos(pos.x, pos.y, pos.z, id);
-    }
-
-    return id;
-  }
-
-  playMusic(srcUrl, loop = true) {
-    if (this.currentMusicSrc === srcUrl) {
-      // If already playing, ensure target volume is set correctly
-      if (this.currentMusic) {
-        this.currentMusic.volume(this.volumeSlider * 0.60);
+    let id;
+    try {
+      id = clip.play();
+      if (id == null) return;
+      clip.volume(this.volumeSlider * scale, id);
+      clip.rate(Math.max(.5, Math.min(2, Number.isFinite(rate) ? rate : 1)), id);
+      if (pos && Number.isFinite(pos.x) && Number.isFinite(pos.y) && Number.isFinite(pos.z)) clip.pos(pos.x, pos.y, pos.z, id);
+    } catch {
+      if (id != null) {
+        try { clip.stop(id); } catch { /* A failed voice is already unusable. */ }
       }
       return;
     }
 
+    const voice = { clip, id, group: profile.group, priority: profile.priority, sequence: this.nextVoiceSequence++ };
+    this.activeVoices.push(voice);
+    const cleanup = () => this.removeVoice(voice, cleanup);
+    voice.cleanup = cleanup;
+    clip.once('end', cleanup, id);
+    clip.once('stop', cleanup, id);
+    clip.once('playerror', cleanup, id);
+    return id;
+  }
+
+  makeVoiceRoom(profile) {
+    const groupVoices = this.activeVoices.filter(voice => voice.group === profile.group);
+    if (groupVoices.length >= GROUP_LIMITS[profile.group]) {
+      const victim = this.pickVictim(groupVoices, profile.priority);
+      if (!victim) return false;
+      this.stopVoice(victim);
+    }
+    if (this.activeVoices.length >= MAX_ACTIVE_SFX) {
+      const victim = this.pickVictim(this.activeVoices, profile.priority);
+      if (!victim) return false;
+      this.stopVoice(victim);
+    }
+    return true;
+  }
+
+  pickVictim(voices, incomingPriority) {
+    const candidates = voices.filter(voice => voice.priority <= incomingPriority);
+    if (!candidates.length) return null;
+    return candidates.reduce((oldest, voice) =>
+      voice.priority < oldest.priority || (voice.priority === oldest.priority && voice.sequence < oldest.sequence) ? voice : oldest
+    );
+  }
+
+  stopVoice(voice) {
+    this.removeVoice(voice, voice.cleanup);
+    try { voice.clip.stop(voice.id); } catch { /* Keep the mixer usable if one Howl fails. */ }
+  }
+
+  removeVoice(voice, cleanup) {
+    const index = this.activeVoices.indexOf(voice);
+    if (index !== -1) this.activeVoices.splice(index, 1);
+    if (cleanup && typeof voice.clip.off === 'function') {
+      voice.clip.off('end', cleanup, voice.id);
+      voice.clip.off('stop', cleanup, voice.id);
+      voice.clip.off('playerror', cleanup, voice.id);
+    }
+  }
+
+  resumeAudioContext() {
+    const context = Howler.ctx;
+    if (!context || this.resumePromise || (context.state !== 'suspended' && context.state !== 'interrupted')) return;
+    try {
+      const resumed = context.resume();
+      if (resumed && typeof resumed.then === 'function') {
+        this.resumePromise = Promise.resolve(resumed).catch(() => {}).finally(() => { this.resumePromise = null; });
+      }
+    } catch { /* A later user gesture/Howler auto-unlock can resume it. */ }
+  }
+
+  playMusic(srcUrl, loop = true) {
+    this.resumeAudioContext();
+    if (this.currentMusicSrc === srcUrl) {
+      if (this.currentMusic) {
+        this.currentMusic.volume(this.volumeSlider * .60);
+        if (!this.currentMusic.playing()) this.currentMusic.play();
+      }
+      return;
+    }
     if (this.currentMusic) {
       const oldMusic = this.currentMusic;
       oldMusic.fade(oldMusic.volume(), 0, 500);
       setTimeout(() => oldMusic.stop(), 500);
     }
-
     this.currentMusicSrc = srcUrl;
-    
-    // Create new music instance with max volume 60%
-    this.currentMusic = new Howl({
-      src: [srcUrl],
-      loop: loop,
-      volume: 0,
-      html5: true // Stream background music
-    });
-
-    const targetVolume = this.volumeSlider * 0.60;
+    this.currentMusic = new Howl({ src: [srcUrl], loop, volume: 0, html5: true });
     this.currentMusic.play();
-    this.currentMusic.fade(0, targetVolume, 500);
+    this.currentMusic.fade(0, this.volumeSlider * .60, 500);
   }
 
-  setVolume(v) {
-    this.volumeSlider = v;
-    if (this.currentMusic) {
-      this.currentMusic.volume(v * 0.60);
-    }
+  setVolume(value) {
+    this.volumeSlider = value;
+    if (this.currentMusic) this.currentMusic.volume(value * .60);
   }
 
   updateListener(camera) {
     if (!camera) return;
-    // Set AudioListener position to camera position
     Howler.pos(camera.position.x, camera.position.y, camera.position.z);
-
-    // Get camera orientation vectors
     const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
     const up = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion);
     Howler.orientation(forward.x, forward.y, forward.z, up.x, up.y, up.z);

@@ -5,15 +5,15 @@ import { CrateDropScheduler, RARE_DROP_TYPES } from './CrateDropSystem.js';
 import { mapById } from '../data/maps.js';
 
 export class World {
-  constructor(scene, materials, factory, mapId = 'crossroads') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.hasWater = false; this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.bounds = 78; }
+  constructor(scene, materials, factory, mapId = 'crossroads', gameMode = 'deathmatch') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.gameMode = gameMode; this.hasWater = false; this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.dominationTowers = []; this.bounds = gameMode === 'domination' ? 96 : 78; }
   // teams: [{id, color, dark}] — a base + builder pad is raised for each one, spread on a ring
   build(teams = [{ id: 'blue', color: 0x2fb4ff, dark: 0x11638f }, { id: 'red', color: 0xff5062, dark: 0x8e2634 }]) {
-    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
+    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
     this.scene.background = new THREE.Color(atmos[0]); this.scene.fog = new THREE.FogExp2(atmos[1], atmos[2]);
     this.teams = teams;
     // base ring: player team lands at the bottom of the map, others spread evenly
-    const ringRadius = teams.length <= 2 ? 65 : 60;
-    this.basePositions = {}; this.builderPositions = {}; this.factories = {}; this.baseTurrets = {};
+    const ringRadius = this.gameMode === 'domination' ? (teams.length <= 2 ? 84 : 80) : (teams.length <= 2 ? 65 : 60);
+    this.basePositions = {}; this.spawnPositions = {}; this.builderPositions = {}; this.factories = {}; this.baseTurrets = {};
     teams.forEach((t, i) => {
       const angle = Math.PI / 2 + i / teams.length * Math.PI * 2;
       let x = Math.cos(angle) * ringRadius;
@@ -32,7 +32,7 @@ export class World {
     this.cavePosition = new THREE.Vector3(2, 0, -12);
     this.planCrateDropZones();
     this.setupTerrain();
-    const groundTexture={crossroads:'sidewalk',crown:'summit_stone',wilds:'jungle_floor',rift:'volcanic_rock'}[this.map.id];
+    const groundTexture={crossroads:'sidewalk',crown:'summit_stone',wilds:'jungle_floor',rift:'volcanic_rock',sunken:'moss_stone',serpent:'jungle_floor',eclipse:'root_mud'}[this.map.id]||'jungle_floor';
     const ground = new THREE.Mesh(this.terrainGeometry(), this.materials.building(groundTexture,{repeat:18})); ground.name = 'generated-grass-ground'; ground.receiveShadow = true; this.scene.add(ground);
     if(this.hasWater){const water = new THREE.Mesh(new THREE.PlaneGeometry(180, 16, 48, 8), this.waterMaterial); water.rotation.x = -Math.PI / 2; water.position.set(0, .12, 3); water.renderOrder = 1; this.scene.add(water); this.water = water;this.createBridge(-18);this.createBridge(24)}
     for (const t of teams) {
@@ -42,8 +42,8 @@ export class World {
       const toCenter = base.clone().multiplyScalar(-1).setY(0).normalize();
       const side=new THREE.Vector3(-toCenter.z,0,toCenter.x);const turretPos=base.clone().addScaledVector(toCenter,7).addScaledVector(side,6);turretPos.y=this.heightAt(turretPos.x,turretPos.z);this.baseTurrets[t.id]=this.factory.createBaseTurret(t.id,turretPos);
       const pad = base.clone().addScaledVector(toCenter, 9).addScaledVector(side, -6.5); pad.y = this.heightAt(pad.x, pad.z) + .18;
-      this.builderPositions[t.id] = pad;
-      this.createBuilderPad(pad, t.color, t.dark);
+      this.spawnPositions[t.id] = pad;
+      if(this.gameMode!=='domination'){this.builderPositions[t.id] = pad;this.createBuilderPad(pad, t.color, t.dark);}
     }
     // legacy two-team aliases used by the mission scripts
     this.blueFactory = this.factories[teams[0].id]; this.redFactory = this.factories[teams[1]?.id] || this.factories[teams[0].id];
@@ -51,7 +51,7 @@ export class World {
     this.createCave(this.cavePosition);
     this.setupCrateDropZones();
     this.dropOpeningCrates(this.map.id==='crown'?3:7);
-    this.populate(); this.buildStructures(); this.buildInteractives(); this.buildDecorations(); this.buildThemedContent(); return this;
+    this.populate(); this.buildStructures(); this.buildInteractives(); this.buildDecorations(); this.buildThemedContent(); if(this.gameMode==='domination')this.createDominationTowers(); return this;
   }
   // ── Team Buddies style rolling hills ───────────────────────────────────────
   setupTerrain() {
@@ -72,16 +72,23 @@ export class World {
       if(this.map.id==='crown'){const d=Math.hypot(x,z);result+=Math.max(0,17*(1-d/34));if(d<8)result=17.2;}
       if(this.map.id==='wilds')result+=Math.sin(x*.055)*Math.cos(z*.06)*1.2+1.3;
       if(this.map.id==='rift'){const d=Math.hypot(x,z);result+=Math.max(0,6-d*.08);}
+      if(this.map.id==='sunken'){result+=1.2+Math.sin(x*.045)*Math.cos(z*.05)*2.1;for(const [tx,tz] of [[0,0],[-48,-28],[48,-28],[-42,38],[42,38]])result*=.72+.28*THREE.MathUtils.smoothstep(Math.hypot(x-tx,z-tz),5,12);}
+      if(this.map.id==='serpent'){result+=2.2+Math.max(0,10-Math.abs(z+Math.sin(x*.045)*13)*.42)+Math.sin(x*.07)*1.4;}
+      if(this.map.id==='eclipse'){const d=Math.hypot(x,z);result+=2.5+Math.max(0,9-d*.1)+Math.sin(x*.04)*Math.cos(z*.045)*2.8;}
       return Math.max(0,result);
     };
   }
   terrainGeometry() {
-    const geo = new THREE.PlaneGeometry(180, 180, 120, 120); geo.rotateX(-Math.PI / 2);
+    const size=this.gameMode==='domination'?214:180;const geo = new THREE.PlaneGeometry(size, size, 120, 120); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) pos.setY(i, this.heightAt(pos.getX(i), pos.getZ(i)));
     geo.computeVertexNormals(); return geo;
   }
   groundAt(position) { return this.heightAt(position.x, position.z); }
+  surfaceAt(position) {
+    if (this.isWater(position)) return 'water';
+    return ['crossroads', 'crown', 'rift', 'sunken'].includes(this.map.id) ? 'rock' : 'dirt';
+  }
   createBridge(x) {
     const bridge = new THREE.Mesh(new THREE.BoxGeometry(10, .65, 20), this.materials.building('plating', { repeat: 2 })); bridge.position.set(x, .28, 3); bridge.receiveShadow = bridge.castShadow = true; this.scene.add(bridge);
     for (const sx of [-4.7, 4.7]) { const rail = new THREE.Mesh(new THREE.BoxGeometry(.24, 1.3, 20), this.materials.building('hazard')); rail.position.set(x + sx, 1, 3); this.scene.add(rail); }
@@ -98,6 +105,14 @@ export class World {
   }
   createCave(position) { const group = new THREE.Group(); group.position.copy(position); const dark = new THREE.MeshBasicMaterial({ color: 0x111522 }); const mouth = new THREE.Mesh(new THREE.CircleGeometry(3.15, 12), dark); mouth.position.set(0, 2.75, .12); group.add(mouth); const arch = new THREE.Mesh(new THREE.TorusGeometry(3.35, .82, 6, 14, Math.PI), this.materials.building('cobble')); arch.position.y = 2.65; arch.castShadow = true; group.add(arch); for (const x of [-2.2, 2.2]) { const pillar = new THREE.Mesh(new THREE.CylinderGeometry(.82, 1.05, 3.1, 7), this.materials.building('cobble')); pillar.position.set(x, 1.45, 0); pillar.castShadow = true; group.add(pillar); } const crystalMat = this.materials.building('crystal', { emissive: 0x1780b0, emissiveIntensity: .9 }); for (const [x, z, s] of [[-4, -1, .7], [3.8, .3, .9], [4.5, -1.4, .55]]) { const c = new THREE.Mesh(new THREE.ConeGeometry(.48, 1.7, 5), crystalMat); c.position.set(x, .85, z); c.scale.setScalar(s); group.add(c); } const ring = new THREE.Mesh(new THREE.RingGeometry(5.1, 5.45, 40), new THREE.MeshBasicMaterial({ color: 0x5bd9ff, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })); ring.rotation.x = -Math.PI / 2; ring.position.y = .1; group.add(ring); this.caveRing = ring; this.caveGroup = group; this.scene.add(group); }
   planCrateDropZones() {
+    if(this.gameMode==='domination'){
+      this.crateDropZonePlans=[
+        ['neutral-west','WESTERN CACHE',-31,0],
+        ['neutral-center','TEMPLE CACHE',0,7],
+        ['neutral-east','EASTERN CACHE',31,0],
+      ].map(([id,label,x,z])=>({id,label,kind:'neutral',color:0xffd23f,position:new THREE.Vector3(x,0,z),types:['brown',...RARE_DROP_TYPES],radius:4.8}));
+      return;
+    }
     if(this.map.id==='crown'){
       this.crateDropZonePlans=[{id:'summit-crown',label:'THE CRATE CROWN',kind:'rare',color:0xffd23f,position:new THREE.Vector3(0,0,0),types:['brown'],radius:5.2,burst:3,interval:{minSeconds:1,maxSeconds:5}}];
       return;
@@ -291,6 +306,9 @@ export class World {
     if(this.map.id==='crossroads')this.buildCity();
     else if(this.map.id==='wilds')this.buildJungleRuins();
     else if(this.map.id==='rift')this.buildVolcanicFoundry();
+    else if(this.map.id==='sunken')this.buildSunkenCrown();
+    else if(this.map.id==='serpent')this.buildSerpentSpine();
+    else if(this.map.id==='eclipse')this.buildEclipseSanctum();
     else this.buildSummitArena();
   }
   themedProp(geometry,texture,x,z,y=0,hp=420,radius=2,options={}){
@@ -312,6 +330,43 @@ export class World {
   buildVolcanicFoundry(){
     const lava=new THREE.Mesh(new THREE.RingGeometry(13,27,64),this.materials.building('lava_crust',{emissive:0xff3d00,emissiveIntensity:.85}));lava.rotation.x=-Math.PI/2;lava.position.y=this.heightAt(0,0)+.08;this.scene.add(lava);
     for(let i=0;i<12;i++){const a=i/12*Math.PI*2,r=34,x=Math.cos(a)*r,z=Math.sin(a)*r;const tower=this.themedProp(new THREE.CylinderGeometry(2.2,3,7,8),'corrugated_steel',x,z,3.5,520,3,{repeat:2});tower.rotation.y=a}
+  }
+  buildSunkenCrown(){
+    const walls=[[-28,-18,22,2,0],[-28,18,22,2,0],[28,-18,22,2,0],[28,18,22,2,0],[-58,5,18,2,.5],[58,5,18,2,-.5]];
+    for(const [x,z,w,h,r] of walls){const wall=this.themedProp(new THREE.BoxGeometry(w,4.5,1.5),'moss_stone',x,z,2.25,620,w*.5,{repeat:3});wall.rotation.y=r;}
+    for(let level=0;level<4;level++){const size=30-level*5,y=level*1.6;const terrace=new THREE.Mesh(new THREE.BoxGeometry(size,1.5,size),this.materials.building(level%2?'moss_stone':'sandstone',{repeat:4}));terrace.position.set(0,this.heightAt(0,0)+y,0);terrace.receiveShadow=terrace.castShadow=true;this.scene.add(terrace);}
+    for(const [x,z] of [[-66,-6],[66,-6],[-24,58],[24,58],[-25,-52],[25,-52]])for(let y=0;y<3;y++){const arch=this.themedProp(new THREE.BoxGeometry(y===2?10:2.2,y===2?2:8,2.2),'moss_stone',x+(y===1?7:0),z,y===2?8:4,480,2);if(y===2)arch.position.x=x+3.5;}
+    for(let i=0;i<32;i++){const a=i/32*Math.PI*2,r=42+(i%4)*10,x=Math.cos(a)*r,z=Math.sin(a)*r;if(!this.nearBase(x,z,14))this.createTree(x,z,1.2+(i%3)*.22);}
+  }
+  buildSerpentSpine(){
+    for(let i=-8;i<=8;i++){const x=i*10,z=Math.sin(i*.68)*14,y=4+Math.cos(i*.5)*2;const segment=this.themedProp(new THREE.CylinderGeometry(3.2,4.2,7,8),'moss_stone',x,z,y,650,4,{repeat:2});segment.rotation.z=Math.PI/2;segment.rotation.y=i*.25;}
+    for(const [x,z,r] of [[-62,-42,.35],[-50,44,-.5],[0,-47,0],[48,43,.55],[64,-35,-.4]]){for(const side of [-1,1]){const p=this.themedProp(new THREE.BoxGeometry(2.6,10,2.6),'sandstone',x+side*5,z,5,520,1.7);p.rotation.y=r;}const lintel=this.themedProp(new THREE.BoxGeometry(13,2.2,3),'moss_stone',x,z,10.2,600,6);lintel.rotation.y=r;}
+    for(let i=0;i<18;i++){const a=i/18*Math.PI*2,x=Math.cos(a)*24,z=Math.sin(a)*24;const fang=this.themedProp(new THREE.ConeGeometry(1.5,7,5),'marble',x,z,3.5,330,1.6);fang.rotation.z=(i%2?.18:-.18);}
+  }
+  buildEclipseSanctum(){
+    for(let ring=0;ring<3;ring++){const count=12+ring*4,radius=25+ring*18;for(let i=0;i<count;i++){if(i%(4+ring)===0)continue;const a=i/count*Math.PI*2,x=Math.cos(a)*radius,z=Math.sin(a)*radius;const wall=this.themedProp(new THREE.BoxGeometry(8-ring,4+ring,1.5),'moss_stone',x,z,2+ring*.5,520,4);wall.rotation.y=-a;}}
+    for(let i=0;i<8;i++){const a=i/8*Math.PI*2,x=Math.cos(a)*68,z=Math.sin(a)*68;const legs=this.themedProp(new THREE.BoxGeometry(5,11,5),'marble',x,z,5.5,900,3);legs.rotation.y=-a;const torso=this.themedProp(new THREE.BoxGeometry(8,9,4),'sandstone',x,z,15,900,4);torso.rotation.y=-a;const head=this.themedProp(new THREE.DodecahedronGeometry(3.4),'moss_stone',x,z,22,600,3.5);head.rotation.y=-a;}
+    const altar=new THREE.Mesh(new THREE.CylinderGeometry(13,17,3,12),this.materials.building('marble',{repeat:3}));altar.position.set(0,this.heightAt(0,0)+1.5,0);altar.castShadow=altar.receiveShadow=true;this.scene.add(altar);
+  }
+  dominationTowerPlans(){
+    if(this.map.id==='serpent')return [['FANG',-70,-22],['COIL',-46,28],['HEART',-22,-10],['CROWN',0,18],['SCALE',25,-13],['TEMPLE',49,30],['TAIL',72,-24]];
+    if(this.map.id==='eclipse')return [['DAWN',0,-54],['TITAN',52,-18],['DUSK',32,46],['MOON',-32,46],['ABYSS',-52,-18]];
+    return [['SUN',0,0],['ROOT',-48,-28],['FLOOD',48,-28],['JAGUAR',-42,38],['SKY',42,38]];
+  }
+  createDominationTowers(){
+    const neutral=0x090b10;
+    this.dominationTowers=this.dominationTowerPlans().map(([label,x,z],index)=>{
+      const position=new THREE.Vector3(x,this.heightAt(x,z),z),group=new THREE.Group();group.position.copy(position);group.name=`domination-tower-${label.toLowerCase()}`;
+      const pedestalMat=new THREE.MeshStandardMaterial({color:neutral,roughness:.72,metalness:.28,emissive:0x000000,emissiveIntensity:.9});
+      const pedestal=new THREE.Mesh(new THREE.CylinderGeometry(5.2,6.3,1.1,12),pedestalMat);pedestal.position.y=.55;pedestal.castShadow=pedestal.receiveShadow=true;group.add(pedestal);
+      const steps=new THREE.Mesh(new THREE.CylinderGeometry(6.8,7.4,.35,12),this.materials.building('moss_stone'));steps.position.y=.18;steps.receiveShadow=true;group.add(steps);
+      const spireMat=pedestalMat.clone();const spire=new THREE.Mesh(new THREE.CylinderGeometry(.7,1.5,9,8),spireMat);spire.position.y=5.5;spire.castShadow=true;group.add(spire);
+      const crown=new THREE.Mesh(new THREE.OctahedronGeometry(1.4),spireMat);crown.position.y=10.5;crown.rotation.z=Math.PI/4;group.add(crown);
+      const ringMat=new THREE.MeshBasicMaterial({color:neutral,transparent:true,opacity:.82,side:THREE.DoubleSide,depthWrite:false});const ring=new THREE.Mesh(new THREE.RingGeometry(4.65,5.15,48),ringMat);ring.rotation.x=-Math.PI/2;ring.position.y=1.15;group.add(ring);
+      const beamMat=new THREE.MeshBasicMaterial({color:neutral,transparent:true,opacity:.09,depthWrite:false,side:THREE.DoubleSide});const beam=new THREE.Mesh(new THREE.CylinderGeometry(2.1,3.6,24,16,1,true),beamMat);beam.position.y=12;group.add(beam);
+      for(let i=0;i<4;i++){const a=i*Math.PI/2;const flame=new THREE.Mesh(new THREE.ConeGeometry(.22,.9,5),new THREE.MeshBasicMaterial({color:neutral}));flame.position.set(Math.cos(a)*4.7,1.8,Math.sin(a)*4.7);group.add(flame);}
+      this.scene.add(group);return{id:`tower-${index}`,label,position,radius:5.2,group,pedestalMat,spireMat,ringMat,beamMat,ownerTeam:null,captureTeam:null,captureProgress:0,contested:false};
+    });
   }
   buildDecorations() {
     // 1. Generate Dirt Roads
@@ -464,6 +519,12 @@ export class World {
   }
   update(time, dt = 0, particles = null) {
     this.waterMaterial.uniforms.uTime.value = time;
+    for(const [i,tower] of this.dominationTowers.entries()){
+      tower.group.children[3].rotation.y=time*(1.1+i*.04);
+      tower.ringMat.opacity=tower.contested?.95:.58+Math.sin(time*4+i)*.18;
+      tower.beamMat.opacity=(tower.ownerTeam?.14:.055)+(tower.captureProgress/5)*.18;
+      tower.group.scale.y=1+Math.sin(time*2.2+i)*.008;
+    }
     for (const zone of this.crateDropZones) {
       const visual = zone.visual; if (!visual) continue;
       visual.spinner.rotation.z = time * (zone.kind === 'rare' ? 1.2 : .65);

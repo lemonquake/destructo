@@ -167,6 +167,44 @@ describe('Observer camera controls', () => {
     expect(game.camera.fov).toBe(48);
     expect(game.camera.updateProjectionMatrix).toHaveBeenCalled();
   });
+
+  it('defaults to Freelook mode when entering observer mode', () => {
+    const originalGetElementById = global.document.getElementById;
+    const originalQuerySelectorAll = global.document.querySelectorAll;
+    const originalCreateElement = global.document.createElement;
+
+    const dummyElement = {
+      classList: {
+        add: vi.fn(),
+        remove: vi.fn(),
+        toggle: vi.fn()
+      },
+      appendChild: vi.fn(),
+      style: {}
+    };
+
+    global.document.getElementById = vi.fn().mockReturnValue(dummyElement);
+    global.document.querySelectorAll = vi.fn().mockReturnValue([]);
+    global.document.createElement = vi.fn().mockReturnValue(dummyElement);
+
+    const game = createMockGame({
+      hud: { show: vi.fn() },
+      endRuntime: vi.fn(),
+      initObserverUI: vi.fn(),
+      updateObserverUI: vi.fn(),
+      setObserverMode: vi.fn()
+    });
+
+    Game.prototype.enterObserverMode.call(game);
+
+    expect(game.observerMode).toBe('free');
+    expect(game.setObserverMode).toHaveBeenCalledWith('free');
+
+    // Restore originals
+    global.document.getElementById = originalGetElementById;
+    global.document.querySelectorAll = originalQuerySelectorAll;
+    global.document.createElement = originalCreateElement;
+  });
 });
 
 describe('AI Director battle tracking and cuts', () => {

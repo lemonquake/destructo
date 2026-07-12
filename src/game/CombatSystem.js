@@ -137,6 +137,7 @@ export class CombatSystem {
     this.release(p);
   }
   applyDamage(target, damage, source, direction, knockback = 0, explosive = false, reflected = false) {
+    if(target?.invulnerable)return;
     if (target.dead || target.critical) return;
     // Enclosed occupants are not separate hit targets: their structure catches
     // both direct hits and blast damage until it is destroyed.
@@ -165,12 +166,12 @@ export class CombatSystem {
     if (!reflected && damage > 0 && target.passive?.id === 'thorns' && source && !source.dead && Number.isFinite(source.hp))
       this.applyDamage(source, damage * .1, target, null, 0, false, true);
     if (target.hp <= 0 && target.passive?.id === 'laststand' && !target.lastStandUsed) { target.lastStandUsed = true; target.hp = 1; }
-    this.onDamage?.(target, damage, source, direction);
+    this.onDamage?.(target, damage, source, direction, explosive);
     if (target.velocity && direction && knockback && target.passive?.id !== 'stonefeet') {
       const dir = direction.clone().normalize(); target.velocity.addScaledVector(dir, knockback);
       if (knockback > 6) { target.state = 'tumble'; target.stun = Math.min(1.5, .25 + knockback * .07); }
     }
-    if (target.hp <= 0) { target.hp = 0;if(target.delayedExplosion){target.critical=true;target.explosionTimer=3;target.lastDamageSource=source;return}target.dead = true; this.onDeath(target, source); }
+    if (target.hp <= 0) { target.hp = 0;if(target.delayedExplosion){target.critical=true;target.explosionTimer=3;target.lastDamageSource=source;target.lastDamageExplosive=explosive;return}target.dead = true; this.onDeath(target, source, { explosive }); }
   }
   radial(position, radius, damage, source, knockback = 8) { this.particles.burst(position.clone().add(new THREE.Vector3(0, .5, 0)), 0xffb44a, 28, 9); for (const target of this.getTargets()) { if (!target || target.dead || target === source || target.mountedTurret || target.mountedBunker || (source && !this.canHit(source, target))) continue; const dist = target.group.position.distanceTo(position); if (dist > radius) continue; const falloff = 1 - dist / radius, dir = target.group.position.clone().sub(position).setY(.35).normalize(); this.applyDamage(target, damage * falloff, source, dir, knockback * falloff, true); } }
   release(p) { p.active = false; p.mesh.visible = false; p.shooter = null; }

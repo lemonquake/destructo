@@ -46,6 +46,11 @@
           <section class="builder panel"><span>D-BUILDER</span><div id="builder-cells" class="builder-cells"></div><small>E · STACK &nbsp; F · MATERIALIZE</small></section>
         </div>
       </div>
+      <section id="domination-hud" class="domination-hud hidden" aria-label="Tower domination score">
+        <div class="domination-scoreboard"><span class="domination-kicker">TOWER DOMINATION</span><div id="domination-scores" class="domination-scores"></div></div>
+        <div id="domination-towers" class="domination-towers"></div>
+      </section>
+      <div id="domination-announcement" class="domination-announcement hidden" role="status"><span>TOWER AWAKENED</span><strong>TEAM CLAIMS SUN</strong><small>Point surge engaged.</small></div>
       <div id="screen" class="screen"></div>
       <div id="damage-flash"></div>
       <div id="mobile-controls" class="hidden" aria-hidden="true"><div id="move-stick"></div><div id="aim-stick"></div></div>
@@ -65,9 +70,9 @@
             <div class="control-group"><label>TEAM</label><select id="obs-team-select"></select></div>
             <div class="control-group"><label>PLAYER POV</label><select id="obs-unit-select"></select></div>
             <div class="camera-modes" role="group" aria-label="Observer camera mode">
-              <button class="active" data-obs-mode="follow">FOLLOW</button>
+              <button data-obs-mode="follow">FOLLOW</button>
               <button data-obs-mode="pov">POV</button>
-              <button data-obs-mode="free">FREELOOK</button>
+              <button class="active" data-obs-mode="free">FREELOOK</button>
               <button data-obs-mode="cinematic">AI DIRECTOR</button>
             </div>
           </div>

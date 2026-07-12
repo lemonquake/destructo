@@ -21,5 +21,31 @@ export const MAPS = Object.freeze({
   }),
 });
 
+export const DOMINATION_MAPS = Object.freeze({
+  sunken: Object.freeze({
+    id: 'sunken', mode: 'domination', title: 'THE SUNKEN CROWN', tag: 'FLOODED TEMPLE CITY',
+    description: 'Five towers crown a drowned jungle capital: a stepped sun temple, twin vine bridges, flooded courts, and ambush paths beneath colossal roots.',
+    accent: '#4dffc3', icon: '☀️', texture: 'moss_stone', weather: 'GOLDEN MONSOON', towerCount: 5,
+  }),
+  serpent: Object.freeze({
+    id: 'serpent', mode: 'domination', title: 'SPINE OF THE SERPENT', tag: 'RIDGELINE WAR',
+    description: 'Seven towers snake across a mountainous idol ridge, with cliff temples, rope-bridge lanes, hidden jungle gullies, and a giant stone serpent arena.',
+    accent: '#d7ff43', icon: '🐍', texture: 'jungle_floor', weather: 'THUNDER CANOPY', towerCount: 7,
+  }),
+  eclipse: Object.freeze({
+    id: 'eclipse', mode: 'domination', title: 'ECLIPSE OF TITANS', tag: 'COLOSSAL LOST SANCTUM',
+    description: 'Five monumental capture shrines surround an eclipse altar, ringed by titan statues, terraced temple walls, waterfalls, caves, and high jungle causeways.',
+    accent: '#bd7bff', icon: '🌘', texture: 'root_mud', weather: 'VIOLET ECLIPSE', towerCount: 5,
+  }),
+});
+
+export const GAME_MODES = Object.freeze({
+  deathmatch: Object.freeze({ id: 'deathmatch', title: 'DEATHMATCH', kicker: 'LAST TEAM STANDING', description: 'Destroy bases, wipe squads, and survive sudden death.', mapIds: Object.keys(MAPS) }),
+  domination: Object.freeze({ id: 'domination', title: 'TOWER DOMINATION', kicker: 'CAPTURE · HOLD · SCORE', description: 'Stand on a tower pedestal for 5 seconds to claim it. Every held tower generates points.', mapIds: Object.keys(DOMINATION_MAPS) }),
+});
+
+export const ALL_MAPS = Object.freeze({ ...MAPS, ...DOMINATION_MAPS });
+export const mapsForMode = modeId => (GAME_MODES[modeId] || GAME_MODES.deathmatch).mapIds.map(id => ALL_MAPS[id]);
+
 export const DEFAULT_MAP_ID = 'crossroads';
-export const mapById = id => MAPS[id] || MAPS[DEFAULT_MAP_ID];
+export const mapById = id => ALL_MAPS[id] || MAPS[DEFAULT_MAP_ID];
