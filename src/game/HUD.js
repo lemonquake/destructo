@@ -21,7 +21,7 @@ export class HUD {
       "Need health, shield, or ammo? Open a loose Crate in the field by hitting F!",
       "Press P to switch to First-Person Shooter mode! Look around and target enemies directly!",
       "Crate Magnetism: Hold a Crate and get near the D-Builder to snap it to a cell.",
-      "Veteran AI will persistently build a Battle Tank after 2 minutes of play to win the match!"
+      "CPU teams receive independent battle doctrines, so watch for guards, army builders, and tank rushes!"
     ];
     this.currentTipIndex = 0;
     this.tipTimer = null;

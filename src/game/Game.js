@@ -119,7 +119,8 @@ export class Game{
     this.builders=this.gameMode==='domination'?{}:Object.fromEntries(this.teams.map(t=>[t.id,new DBuilder(this.world,this.factory,this.handleBuild.bind(this),t.id,this.world.builderPositions[t.id])]));
     this.builder=this.builders[this.playerTeam]||null;
     const interact={mountTurret:(u,t)=>this.mountTurret(u,t),mountBunker:(u,b)=>this.mountBunker(u,b),mountMotorcycle:(u,m)=>this.mountMotorcycle(u,m),exit:(u,forced)=>this.exitInteractive(u,forced)};
-    this.aiBehaviorIndex=0;this.ai=new AIController(this.world,this.combat,this.builders,u=>this.executeActiveSkill(u),team=>!this.observerOnly&&team===this.playerTeam?AI_BEHAVIORS[this.aiBehaviorIndex].id:'attack',team=>!this.observerOnly&&team===this.playerTeam?this.player:null,(unit,crate)=>this.openCrate(crate,unit),()=>this.matchRules.aiDifficulty,interact,team=>this.livingUnits(team));this.updateDoctrineDisplay();
+    this.aiBehaviorIndex=0;this.ai=new AIController(this.world,this.combat,this.builders,u=>this.executeActiveSkill(u),team=>!this.observerOnly&&team===this.playerTeam?AI_BEHAVIORS[this.aiBehaviorIndex].id:'attack',team=>!this.observerOnly&&team===this.playerTeam?this.player:null,(unit,crate)=>this.openCrate(crate,unit),()=>this.matchRules.aiDifficulty,interact,team=>this.livingUnits(team),()=>this.teams,(a,b)=>this.hostile(a,b));
+    for(const team of this.teams){const doctrine=team.human?AI_BEHAVIORS[this.aiBehaviorIndex].id:this.ai.assignRandomDoctrine(team.id);if(team.human)this.ai.setTeamDoctrine(team.id,doctrine);team.aiDoctrine=doctrine;}this.updateDoctrineDisplay();
     this.kills=0;this.elapsed=0;this.observerBet=null;this.leagueSettled=false;this.damageVoiceCooldown=0;
     this.suddenDeathTimer = this.matchRules.matchMinutes * 60;
     this.suddenDeathActive = false;
@@ -152,7 +153,7 @@ export class Game{
     if(this.state==='mission') this.updateHover();
     else if(this.state==='observer'){
       this.updateObserverUI();
-      this.observerMinimap.update(this.world,this.teams,this.combatants,this.observerTarget,{camera:this.camera,focus:this.camera.position});
+      this.observerMinimap.update(this.world,this.teams,this.combatants,this.observerTarget,{camera:this.camera,focus:this.camera.position},this.elapsed);
     }
     if((this.state==='mission' || this.state==='observer')&&this.gameMode!=='domination'){
       const activeTeams=this.teams.filter(t=>!t.eliminated);
@@ -208,7 +209,7 @@ export class Game{
     if(this.state==='mission'){
       this.hud.update(this.player.mountedTurret||this.player,bossFactory,this.livingUnits(this.playerTeam).length,this.save.data.chips,this.builder?.values?.()||[]);
       this.hud.updateSquad(this.livingUnits(this.playerTeam),this.player,u=>this.factory.unitPortrait(u));
-      this.minimap.update(this.world,this.teams,this.combatants,this.player);
+      this.minimap.update(this.world,this.teams,this.combatants,this.player,null,this.elapsed);
     }
     this.audio.updateListener(this.camera);
     this.input.endFrame()}
@@ -224,9 +225,10 @@ export class Game{
         this.handleDeath(f,null);
       }
     }
+    this.ai?.enterSuddenDeath(this.observerOnly?[]:[this.playerTeam]);
   }
   nearestEnemyFactory(){let best=null,d=Infinity;for(const tid of Object.keys(this.world.factories)){const f=this.world.factories[tid];if(f.dead||!this.hostile(this.playerTeam,tid))continue;const dist=f.group.position.distanceToSquared(this.player.group.position);if(dist<d){d=dist;best=f}}return best}
-  cycleAIBehavior(delta){this.aiBehaviorIndex=(this.aiBehaviorIndex+delta+AI_BEHAVIORS.length)%AI_BEHAVIORS.length;const behavior=AI_BEHAVIORS[this.aiBehaviorIndex];for(const ally of this.livingUnits(this.playerTeam)){if(ally===this.player)continue;ally.patrolPoint=null;ally.commandPoint=null}this.updateDoctrineDisplay();this.hud.toast(`${behavior.name} · ${behavior.description}`)}
+  cycleAIBehavior(delta){this.aiBehaviorIndex=(this.aiBehaviorIndex+delta+AI_BEHAVIORS.length)%AI_BEHAVIORS.length;const behavior=AI_BEHAVIORS[this.aiBehaviorIndex];this.ai?.setTeamDoctrine(this.playerTeam,behavior.id);const team=this.teamMap?.[this.playerTeam];if(team)team.aiDoctrine=behavior.id;for(const ally of this.livingUnits(this.playerTeam)){if(ally===this.player)continue;ally.patrolPoint=null;ally.commandPoint=null}this.updateDoctrineDisplay();this.hud.toast(`${behavior.name} · ${behavior.description}`)}
   updateDoctrineDisplay(){const behavior=AI_BEHAVIORS[this.aiBehaviorIndex]||AI_BEHAVIORS[0],name=document.querySelector('#ai-doctrine'),desc=document.querySelector('#ai-description');if(name)name.textContent=behavior.name;if(desc)desc.textContent=behavior.description}
   scoutFromMinimap(point){if(this.state!=='mission')return;this.cameraScout={point:new THREE.Vector3(point.x,this.world.heightAt(point.x,point.z),point.z),elapsed:0,returning:false};this.hud.toast('TACTICAL SCOUT · RETURNING IN 3s')}
   // ── respawn + elimination: wiped teams get one Destructo back after 15s while
