@@ -71,42 +71,69 @@ canvas{display:block}
 #minimap{width:190px;height:190px;border:3px solid #fff;border-radius:14px;background:#284736;box-shadow:0 5px 0 rgba(8,12,28,.55),0 0 18px rgba(47,180,255,.25);cursor:crosshair}
 .doctrine{background:rgba(24,32,66,.9);border:3px solid #fff;border-radius:12px;padding:7px 10px;display:grid;gap:2px}
 .doctrine span{font-size:9px;color:#a9dfff}.doctrine strong{font-size:17px;color:var(--yellow)}.doctrine small{font:700 10px/1.25 system-ui,sans-serif;color:#fff}
-/* ── custom crosshair cursor ─────────────────────────────────────────────── */
-#crosshair{position:fixed;left:0;top:0;width:34px;height:34px;pointer-events:none;z-index:14;transition:width .12s,height .12s}
-#crosshair i{position:absolute;width:10px;height:10px;border:3px solid #fff;filter:drop-shadow(0 0 3px rgba(0,0,0,.7))}
+/* ── centered combat reticle: fixed at screen center, the camera does the aiming ── */
+#crosshair{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);width:48px;height:48px;pointer-events:none;z-index:14;--spread:0px;--ret:#f2f7ff;transition:width .12s,height .12s}
+#crosshair .rose{position:absolute;inset:0}
+#crosshair .blade{position:absolute;background:var(--ret);border-radius:2px;box-shadow:0 1px 3px rgba(6,9,22,.85),0 0 6px rgba(150,225,255,.35);transition:transform .07s ease-out,background .1s}
+#crosshair .blade.n,#crosshair .blade.s{left:50%;width:3px;height:12px;margin-left:-1.5px}
+#crosshair .blade.e,#crosshair .blade.w{top:50%;width:12px;height:3px;margin-top:-1.5px}
+#crosshair .blade.n{top:0;transform:translateY(calc(0px - var(--spread)))}
+#crosshair .blade.s{bottom:0;transform:translateY(var(--spread))}
+#crosshair .blade.w{left:0;transform:translateX(calc(0px - var(--spread)))}
+#crosshair .blade.e{right:0;transform:translateX(var(--spread))}
+#crosshair .aim-ring{display:block;position:absolute;inset:calc(4px - var(--spread)/2);border:1.5px solid rgba(242,247,255,.24);border-radius:50%;box-shadow:0 0 6px rgba(6,9,22,.5)}
+#crosshair i{display:none;position:absolute;width:10px;height:10px;border:3px solid #fff;filter:drop-shadow(0 0 3px rgba(0,0,0,.7))}
 #crosshair .tl{left:0;top:0;border-right:none;border-bottom:none}
 #crosshair .tr{right:0;top:0;border-left:none;border-bottom:none}
 #crosshair .bl{left:0;bottom:0;border-right:none;border-top:none}
 #crosshair .br{right:0;bottom:0;border-left:none;border-top:none}
 #crosshair b{position:absolute;left:50%;top:50%;width:5px;height:5px;margin:-2.5px;border-radius:50%;background:var(--yellow);box-shadow:0 0 5px var(--yellow)}
 #crosshair .lock-ring,#crosshair .lock-label{display:none}
-#crosshair.enemy{animation:cross-spin .5s linear infinite,cross-flash .3s steps(2) infinite}
-#crosshair.enemy i{border-color:var(--red)}
+#crosshair.enemy{--ret:var(--red)}
+#crosshair.enemy .rose{animation:cross-spin .5s linear infinite}
+#crosshair.enemy .blade{box-shadow:0 0 7px rgba(255,60,80,.8)}
+#crosshair.enemy .aim-ring{border-color:rgba(255,75,85,.6)}
 #crosshair.enemy b{background:var(--red);box-shadow:0 0 8px var(--red)}
-/* ── LOCK-ON state: crosshair clamps on target, spins red, flashes, shows label ── */
-#crosshair.locked{width:52px;height:52px}
-#crosshair.locked i{border-color:var(--red);animation:lock-corner .55s ease-in-out infinite alternate}
+/* ── LOCK-ON state: the center reticle tightens red while #lock-marker clamps the target ── */
+#crosshair.locked{--ret:var(--red)}
+#crosshair.locked .blade{box-shadow:0 0 8px rgba(255,48,69,.85);animation:cross-flash .32s steps(2) infinite}
+#crosshair.locked .aim-ring{border-color:rgba(255,48,69,.65);border-style:dashed;animation:lock-rotate 1.4s linear infinite}
 #crosshair.locked b{background:var(--red);box-shadow:0 0 10px var(--red)}
-#crosshair.locked .lock-ring{display:block;position:absolute;inset:-9px;border:3px dashed var(--red);border-radius:50%;animation:lock-rotate 1.1s linear infinite,cross-flash .32s steps(2) infinite;filter:drop-shadow(0 0 6px rgba(255,40,60,.9))}
-#crosshair.locked .lock-label{display:block;position:absolute;left:50%;top:-30px;transform:translateX(-50%);font-size:13px;font-weight:900;color:var(--red);letter-spacing:.14em;text-shadow:0 0 6px rgba(255,40,60,.8),2px 2px 0 rgba(10,14,30,.8);animation:lock-label-pulse .5s ease-in-out infinite alternate;white-space:nowrap}
-#crosshair.out-of-range .lock-label{color:#ffd23f}#crosshair.out-of-range .lock-label::after{content:' · OUT OF RANGE'}#crosshair.out-of-range i{border-color:#ffd23f}#crosshair.out-of-range b{background:#ffd23f}
-#crosshair.lock-pulse{animation:lock-acquire .35s ease-out}
-/* Dedicated fixed weapon-station reticle. It replaces the infantry cursor and
-   stays screen-centered until its own lock-on system acquires a target. */
+#crosshair.out-of-range{--ret:#ffd23f}#crosshair.out-of-range b{background:#ffd23f}
+#crosshair.lock-pulse .rose{animation:lock-acquire .35s ease-out}
+/* Dedicated weapon-station reticle: same centered anchor, heavier frame. */
 #crosshair.turret-mode{width:68px;height:68px;transition:width .16s,height .16s;animation:turret-breathe .85s ease-in-out infinite alternate}
-#crosshair.turret-mode i{width:19px;height:19px;border-width:4px;border-color:#ffd23f;filter:drop-shadow(0 0 7px rgba(255,210,63,.95))}
+#crosshair.turret-mode .blade{background:#ffd23f;box-shadow:0 0 6px rgba(255,210,63,.8)}
+#crosshair.turret-mode i{display:block;width:19px;height:19px;border-width:4px;border-color:#ffd23f;filter:drop-shadow(0 0 7px rgba(255,210,63,.95))}
 #crosshair.turret-mode b{width:10px;height:10px;margin:-5px;background:#fff;border:3px solid #ff9e2f;box-shadow:0 0 12px #ffd23f}
 #crosshair.turret-mode::before,#crosshair.turret-mode::after{content:'';position:absolute;left:50%;top:50%;pointer-events:none}
 #crosshair.turret-mode::before{width:88px;height:88px;transform:translate(-50%,-50%);border:3px solid rgba(255,210,63,.75);border-left-color:transparent;border-right-color:transparent;border-radius:50%;animation:turret-scan 1.35s linear infinite}
 #crosshair.turret-mode::after{width:2px;height:96px;transform-origin:50% 50%;background:linear-gradient(transparent,rgba(255,210,63,.8),transparent);animation:turret-sweep 1.8s linear infinite}
 #crosshair.turret-mode.bunker-mode i{border-color:#66edff;filter:drop-shadow(0 0 7px #2fb4ff)}
+#crosshair.turret-mode.bunker-mode .blade{background:#66edff}
 #crosshair.turret-mode.locked::before{border-color:rgba(255,48,69,.92);border-left-color:transparent;border-right-color:transparent}
-#crosshair.passenger-mode i{opacity:.24;border-color:#9ba9bd}#crosshair.passenger-mode b{background:#9ba9bd;box-shadow:none}#crosshair.backrider-mode i{border-color:#fff}#crosshair.backrider-mode b{background:var(--yellow)}
+#crosshair.passenger-mode .blade{opacity:.24;background:#9ba9bd;box-shadow:none}#crosshair.passenger-mode .aim-ring{opacity:.3}#crosshair.passenger-mode b{background:#9ba9bd;box-shadow:none}#crosshair.backrider-mode .blade{background:#fff}#crosshair.backrider-mode b{background:var(--yellow)}
 @keyframes turret-breathe{to{filter:drop-shadow(0 0 9px rgba(255,210,63,.65))}}
 @keyframes turret-scan{to{transform:translate(-50%,-50%) rotate(360deg)}}
 @keyframes turret-sweep{from{transform:translate(-50%,-50%) rotate(0)}to{transform:translate(-50%,-50%) rotate(360deg)}}
+/* ── lock-on marker: clamps onto the locked target while the reticle stays centered ── */
+#lock-marker{position:fixed;left:0;top:0;width:58px;height:58px;pointer-events:none;z-index:13;--lock:var(--red)}
+#lock-marker.hidden{display:none}
+#lock-marker.out-of-range{--lock:#ffd23f}
+#lock-marker .frame{position:absolute;inset:0;animation:lock-acquire .35s ease-out}
+#lock-marker i{position:absolute;width:15px;height:15px;border:3px solid var(--lock);filter:drop-shadow(0 0 5px var(--lock));animation:lock-corner .55s ease-in-out infinite alternate}
+#lock-marker .c1{left:0;top:0;border-right:none;border-bottom:none}
+#lock-marker .c2{right:0;top:0;border-left:none;border-bottom:none}
+#lock-marker .c3{left:0;bottom:0;border-right:none;border-top:none}
+#lock-marker .c4{right:0;bottom:0;border-left:none;border-top:none}
+#lock-marker u{display:block;position:absolute;inset:-8px;border:2px dashed var(--lock);border-radius:50%;animation:lock-rotate 1.1s linear infinite;filter:drop-shadow(0 0 6px var(--lock))}
+#lock-marker .ping{display:block;position:absolute;inset:-8px;border:2px solid var(--lock);border-radius:50%;opacity:0;animation:lock-ping 1.15s ease-out infinite}
+#lock-marker .tag{position:absolute;left:50%;top:-27px;transform:translateX(-50%);font-size:12px;font-weight:900;color:var(--lock);letter-spacing:.14em;white-space:nowrap;text-shadow:0 0 6px var(--lock),2px 2px 0 rgba(10,14,30,.8);animation:lock-label-pulse .5s ease-in-out infinite alternate}
+#lock-marker.out-of-range .tag::after{content:' · OUT OF RANGE'}
+@keyframes lock-ping{0%{opacity:.9;scale:.6}80%{opacity:0;scale:1.7}100%{opacity:0;scale:1.7}}
 #crosshair.grapple-mode{width:62px;height:62px;animation:grapple-reticle-bounce .7s ease-in-out infinite alternate}
-#crosshair.grapple-mode i{border-color:#55e9ff;border-width:4px;filter:drop-shadow(0 0 7px rgba(85,233,255,.95))}
+#crosshair.grapple-mode .blade{background:#55e9ff;box-shadow:0 0 6px rgba(85,233,255,.85)}
+#crosshair.grapple-mode i{display:block;border-color:#55e9ff;border-width:4px;filter:drop-shadow(0 0 7px rgba(85,233,255,.95))}
 #crosshair.grapple-mode b{width:10px;height:10px;margin:-5px;background:#ffd23f;box-shadow:0 0 12px #55e9ff}
 #crosshair.grapple-mode::before{content:'GRAPPLE';position:absolute;left:50%;top:-28px;transform:translateX(-50%);font-size:11px;font-weight:900;letter-spacing:.18em;color:#55e9ff;text-shadow:2px 2px 0 #111;white-space:nowrap}
 #crosshair.grapple-mode::after{content:'';position:absolute;inset:-8px;border:3px dotted #ffd23f;border-radius:50%;animation:lock-rotate 1.2s linear infinite}
@@ -657,7 +684,8 @@ body.domination-mode #tips-panel,body.domination-mode .doctrine{display:none}
 /* ── Heal-targeting crosshair: big green reticle with the red cross center ─── */
 #crosshair .heal-ring,#crosshair .heal-cross,#crosshair .heal-label{display:none}
 #crosshair.heal-mode{width:74px;height:74px}
-#crosshair.heal-mode i{border-color:var(--green);border-width:4px;width:16px;height:16px;animation:heal-breathe .9s ease-in-out infinite alternate;filter:drop-shadow(0 0 6px rgba(92,224,101,.9))}
+#crosshair.heal-mode .blade,#crosshair.heal-mode .aim-ring{display:none}
+#crosshair.heal-mode i{display:block;border-color:var(--green);border-width:4px;width:16px;height:16px;animation:heal-breathe .9s ease-in-out infinite alternate;filter:drop-shadow(0 0 6px rgba(92,224,101,.9))}
 #crosshair.heal-mode b{display:none}
 #crosshair.heal-mode .lock-ring,#crosshair.heal-mode .lock-label{display:none}
 #crosshair.heal-mode .heal-ring{display:block;position:absolute;inset:-12px;border:3px dashed var(--green);border-radius:50%;animation:lock-rotate 1.6s linear infinite;filter:drop-shadow(0 0 8px rgba(92,224,101,.85))}

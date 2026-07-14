@@ -34,7 +34,8 @@
           <canvas id="minimap" width="190" height="190" aria-label="Tactical minimap. Click to scout an area."></canvas>
           <div class="doctrine"><span>AI DOCTRINE · C / V · R-CLICK TAP: SQUAD ORDER</span><strong id="ai-doctrine">ATTACK</strong><small id="ai-description">Build opportunistically, then hunt hostile forces.</small></div>
         </section>
-        <div id="crosshair" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><b></b><u class="lock-ring"></u><span class="lock-label">LOCK-ON</span><u class="heal-ring"></u><span class="heal-cross"><em></em><em></em></span><span class="heal-label">SELECT HEAL TARGET</span></div>
+        <div id="crosshair" aria-hidden="true"><div class="rose"><u class="aim-ring"></u><s class="blade n"></s><s class="blade e"></s><s class="blade s"></s><s class="blade w"></s><b></b></div><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><u class="lock-ring"></u><span class="lock-label">LOCK-ON</span><u class="heal-ring"></u><span class="heal-cross"><em></em><em></em></span><span class="heal-label">SELECT HEAL TARGET</span></div>
+        <div id="lock-marker" class="hidden" aria-hidden="true"><div class="frame"><i class="c1"></i><i class="c2"></i><i class="c3"></i><i class="c4"></i><u></u><em class="ping"></em><span class="tag">LOCKED</span></div></div>
         <div id="damage-numbers" aria-hidden="true"></div>
         <div id="info-panel" class="info-panel hidden" aria-hidden="true"></div>
         <div id="interaction" class="interaction hidden"></div>

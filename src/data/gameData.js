@@ -289,7 +289,7 @@ export const COSMETICS = Object.freeze([
   { id: 'stripes', kind: 'skin', name: 'Racing Stripes', price: 550 },
 ]);
 
-export const SETTINGS_DEFAULTS = Object.freeze({ shadows: true, volume: .55, cameraShake: true, musicMuted: false, soundsMuted: false });
+export const SETTINGS_DEFAULTS = Object.freeze({ shadows: true, volume: .55, cameraShake: true, musicMuted: false, soundsMuted: false, mouseSensitivity: 1 });
 
 export const MISSIONS = Object.freeze({
   skirmish: { id: 'skirmish', name: 'Battle Royale Skirmish', type: 'skirmish', briefing: 'Up to 10 teams clash on the hills. Destroy every enemy base — when your base falls and your squad is wiped, you are out.', objective: 'Eliminate all enemy teams', reward: 600 },

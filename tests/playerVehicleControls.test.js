@@ -121,7 +121,7 @@ describe('player vehicle role controls', () => {
     expect(player.aim.length()).toBeCloseTo(1);
   });
 
-  it('forces third person on entry and keeps it on exit without pointer lock', () => {
+  it('forces third person on entry and keeps mouse capture through mount and exit', () => {
     const player=unit(),car={type:'car',name:'Roadster',group:groupAt(),driver:null,passengers:[],capacity:4,aim:new THREE.Vector3(0,0,1),radius:2,dead:false};
     const {game,canvas}=controls(player);
     canvas.requestPointerLock=vi.fn();
@@ -131,10 +131,11 @@ describe('player vehicle role controls', () => {
     expect(Game.prototype.mountMotorcycle.call(game,player,car)).toBe(true);
     expect(game.fpsMode).toBe(false);
     expect(game.mountedRole(player,car)).toBe('driver');
-    expect(canvas.requestPointerLock).not.toHaveBeenCalled();
+    expect(game.fpsYaw).toBe(car.group.rotation.y);
     expect(Game.prototype.exitInteractive.call(game,player)).toBe(true);
     expect(game.fpsMode).toBe(false);
-    expect(document.exitPointerLock).toHaveBeenCalled();
+    // the shoulder camera keeps mouse capture across mount/exit — never released
+    expect(document.exitPointerLock).not.toHaveBeenCalled();
   });
 });
 

@@ -1,7 +1,7 @@
 export class HUD {
   constructor() {
     this.root = document.querySelector('#hud');
-    this.el = Object.fromEntries(['hp-fill', 'mp-fill', 'hp-title', 'hp-label', 'mp-label', 'shield-label', 'weapon-name', 'weapon-ballistics', 'ammo-label', 'ability-label', 'boss-fill', 'squad-readout', 'chips-readout', 'interaction', 'toast', 'turret-warning', 'builder-cells', 'objective', 'crosshair', 'info-panel', 'damage-numbers', 'buff-readout', 'squad-stats'].map(id => [id, document.querySelector(`#${id}`)]));
+    this.el = Object.fromEntries(['hp-fill', 'mp-fill', 'hp-title', 'hp-label', 'mp-label', 'shield-label', 'weapon-name', 'weapon-ballistics', 'ammo-label', 'ability-label', 'boss-fill', 'squad-readout', 'chips-readout', 'interaction', 'toast', 'turret-warning', 'builder-cells', 'objective', 'crosshair', 'lock-marker', 'info-panel', 'damage-numbers', 'buff-readout', 'squad-stats'].map(id => [id, document.querySelector(`#${id}`)]));
     this.toastTimer = 0;
     this.el['builder-cells'].innerHTML = '<i></i>'.repeat(12);
     this._squadKey = ''; this._squadCards = new Map();
@@ -19,7 +19,9 @@ export class HUD {
       "Sloped Roof (3, 2, and 1 crates) = Cryo Freeze Ray.",
       "To build a Battle Tank: Stack Crates to fill the entire 3x2x2 cube (12 Crates total)!",
       "Need health, shield, or ammo? Open a loose Crate in the field by hitting F!",
+      "Move the mouse to steer your view — the crosshair stays centered. Right-click to LOCK-ON!",
       "Press P to switch to First-Person Shooter mode! Look around and target enemies directly!",
+      "Adjust Mouse Sensitivity from the Settings or Pause menu to tune how fast the camera turns.",
       "Crate Magnetism: Hold a Crate and get near the D-Builder to snap it to a cell.",
       "CPU teams receive independent battle doctrines, so watch for guards, army builders, and tank rushes!"
     ];
@@ -97,14 +99,23 @@ export class HUD {
   prompt(text) { this.el.interaction.textContent = text || ''; this.el.interaction.classList.toggle('hidden', !text); }
   toast(text, bad = false) { clearTimeout(this.toastTimer); this.el.toast.textContent = text; this.el.toast.classList.remove('hidden'); this.el.toast.classList.toggle('bad', bad); this.toastTimer = setTimeout(() => this.el.toast.classList.add('hidden'), 1800); }
   damage() { const el = document.querySelector('#damage-flash'); el.style.opacity = '.72'; setTimeout(() => el.style.opacity = '0', 70); }
-  // custom crosshair cursor: follows the mouse; turns red + rotates over enemies;
-  // when locked it clamps onto the target with the LOCK-ON treatment
-  setCrosshair(x, y, overEnemy, locked, outOfRange=false) {
+  // screen-centered combat reticle: the camera aims, the crosshair never moves.
+  // It flares red over enemies, tightens when locked, and spreads with recoil/motion.
+  setCrosshair(overEnemy, locked, outOfRange = false, spread = 0) {
     const c = this.el.crosshair;
-    c.style.transform = `translate(${x}px, ${y}px) translate(-50%,-50%)`;
+    c.style.setProperty('--spread', `${Math.max(0, spread).toFixed(1)}px`);
     c.classList.toggle('enemy', Boolean(overEnemy));
     c.classList.toggle('locked', Boolean(locked));
-    c.classList.toggle('out-of-range',Boolean(outOfRange));
+    c.classList.toggle('out-of-range', Boolean(outOfRange));
+  }
+  // animated bracket that clamps onto the locked target while the reticle stays centered
+  setLockMarker(x, y, outOfRange = false) {
+    const m = this.el['lock-marker'];
+    if (!m) return;
+    if (x === null || x === undefined) { m.classList.add('hidden'); return; }
+    m.classList.remove('hidden');
+    m.style.transform = `translate(${x}px, ${y}px) translate(-50%,-50%)`;
+    m.classList.toggle('out-of-range', Boolean(outOfRange));
   }
   // one-shot punch animation when a lock is acquired
   lockPulse() {

@@ -42,13 +42,13 @@ describe('persistent projectile simulation',()=>{
 
   it('uses swept collision and always damages only the nearest crossed target',()=>{
     const near={type:'unit',team:'red',group:at(5,.15,0),radius:.65,hp:100,maxHp:100,velocity:new THREE.Vector3(),dead:false},far={...near,group:at(8,.15,0),hp:100,velocity:new THREE.Vector3()},targets=[far,near];
-    const combat=new CombatSystem(new THREE.Scene(),particles(),()=>targets,vi.fn(),vi.fn(),(a,b)=>a!==b,()=>-100,null,()=>[],world()),unit=shooter({...WEAPONS.pistol,bulletSpeed:120});
+    const combat=new CombatSystem(new THREE.Scene(),particles(),()=>targets,vi.fn(),vi.fn(),(a,b)=>a!==b,()=>-100,null,()=>[],world()),unit=shooter({...WEAPONS.pistol,bulletSpeed:120,spread:0});
     combat.spawn(unit,new THREE.Vector3(1,0,0),unit.weapon);combat.update(.1);
     expect(near.hp).toBeLessThan(100);expect(far.hp).toBe(100);expect(combat.diagnostics().active).toBe(0);
   });
 
   it('collides with and pushes loose crates through the combat spatial hash',()=>{
-    const crate={type:'crate',mass:1,group:at(5,.15,0),radius:.7,velocity:new THREE.Vector3(),angularVelocity:new THREE.Vector3(),carried:false,placed:false},combat=new CombatSystem(new THREE.Scene(),particles(),()=>[],vi.fn(),null,null,()=>-100,null,()=>[crate],world()),unit=shooter({...WEAPONS.pistol,bulletSpeed:120,knockback:5});
+    const crate={type:'crate',mass:1,group:at(5,.15,0),radius:.7,velocity:new THREE.Vector3(),angularVelocity:new THREE.Vector3(),carried:false,placed:false},combat=new CombatSystem(new THREE.Scene(),particles(),()=>[],vi.fn(),null,null,()=>-100,null,()=>[crate],world()),unit=shooter({...WEAPONS.pistol,bulletSpeed:120,knockback:5,spread:0});
     combat.spawn(unit,new THREE.Vector3(1,0,0),unit.weapon);combat.update(.1);
     expect(crate.physicsActive).toBe(true);expect(crate.velocity.x).toBeGreaterThan(0);
   });
