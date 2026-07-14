@@ -29,6 +29,18 @@ describe('Tower Domination', () => {
     expect(point.captureProgress).toBe(2);
   });
 
+  it('treats allied teams as one side and preserves first-capturer credit',()=>{
+    const teams=[{id:'blue',group:0},{id:'cyan',group:0},{id:'red',group:1}],hostile=(a,b)=>teams.find(t=>t.id===a).group!==teams.find(t=>t.id===b).group;
+    const point=tower(),system=new DominationSystem([point],teams,50,hostile);
+    system.update(2,[unit('blue'),unit('blue'),unit('cyan')]);expect(point.contested).toBe(false);expect(point.captureTeam).toBe('blue');
+    system.update(3,[unit('cyan')]);expect(point.ownerTeam).toBe('blue');
+  });
+
+  it('freezes against any hostile alliance and decays only when empty',()=>{
+    const teams=[{id:'blue',group:0},{id:'cyan',group:0},{id:'red',group:1}],hostile=(a,b)=>teams.find(t=>t.id===a).group!==teams.find(t=>t.id===b).group;
+    const point=tower(),system=new DominationSystem([point],teams,50,hostile);system.update(2,[unit('blue')]);system.update(2,[unit('cyan'),unit('red')]);expect(point.captureProgress).toBe(2);expect(point.contested).toBe(true);system.update(1,[]);expect(point.captureProgress).toBeCloseTo(1.35);
+  });
+
   it('declares the first team to the configured score limit', () => {
     const point = tower();point.ownerTeam = 'red';const system = new DominationSystem([point], [{ id: 'blue' }, { id: 'red' }], 25);
     expect(system.update(25, [])).toContainEqual({ type: 'victory', teamId: 'red' });

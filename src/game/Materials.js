@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 
 const textureColors = { grass: ['#5cc24f', '#8ae06a', '#3f9c3f'], dirt: ['#a5673f', '#c98a55', '#7a4c31'], stone: ['#8d8ba1', '#b9b5c9', '#615f78'], water: ['#28b1e6', '#74e2e8', '#1a78b8'], metal: ['#7a8492', '#aeb6bf', '#4a5464'], wood: ['#9c5a30', '#c98846', '#65391f'], uniform: ['#c4c9c6', '#98a09e', '#e2ded2'] };
-const MAP_TEXTURES = ['asphalt','road_lines','neon_concrete','city_glass','urban_brick','corrugated_steel','rooftop','sidewalk','jungle_floor','tree_bark','moss_stone','root_mud','volcanic_rock','lava_crust','summit_stone','vehicle_metal'];
+export const BASE_TEXTURES = Object.freeze(Object.keys(textureColors));
+export const MAP_TEXTURES = Object.freeze(['asphalt','road_lines','neon_concrete','city_glass','urban_brick','corrugated_steel','rooftop','sidewalk','jungle_floor','tree_bark','moss_stone','root_mud','volcanic_rock','lava_crust','summit_stone','vehicle_metal']);
 
 function makeCanvas(size = 128) { const canvas = document.createElement('canvas'); canvas.width = canvas.height = size; return [canvas, canvas.getContext('2d')]; }
 function seededRandom(seed) { return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296; }
@@ -218,7 +219,7 @@ function paintTexture(name, painter) {
 }
 
 export class MaterialLibrary {
-  constructor(renderer, settings) { this.renderer = renderer; this.settings = settings; this.textures = {}; this.materials = {}; this.dynamicMaterials = []; }
+  constructor(renderer, settings) { this.renderer = renderer; this.settings = settings; this.textures = {}; this.materials = {}; this.dynamicMaterials = []; this.ownedTextures = []; this.surfaceMaterials = new Map(); }
   async load() {
     const loader = new THREE.TextureLoader();
     await Promise.all(Object.keys(textureColors).map(async kind => {
@@ -253,6 +254,23 @@ export class MaterialLibrary {
     return kind === 'dirt'
       ? new THREE.MeshBasicMaterial({ map, color })
       : new THREE.MeshStandardMaterial({ map, color, roughness, metalness: kind === 'metal' ? .35 : 0, flatShading: true });
+  }
+  surface(name, options = {}) {
+    const {
+      repeat = [1, 1], rotation = 0, color = 0xffffff, roughness = .96,
+      metalness = 0, transparent = false, opacity = 1, depthWrite = true,
+      emissive = 0x000000, emissiveIntensity = 0,
+    } = options;
+    const repeatPair = Array.isArray(repeat) ? repeat : [repeat, repeat];
+    const key = JSON.stringify({ name, repeat: repeatPair, rotation, color, roughness, metalness, transparent, opacity, depthWrite, emissive, emissiveIntensity });
+    if (this.surfaceMaterials.has(key)) return this.surfaceMaterials.get(key);
+    const source = this.textures[name] || this.textures.stone;
+    const map = source.clone();
+    map.wrapS = map.wrapT = THREE.RepeatWrapping;
+    map.center.set(.5, .5); map.rotation = rotation; map.repeat.set(repeatPair[0], repeatPair[1]); map.needsUpdate = true;
+    const material = new THREE.MeshStandardMaterial({ map, color, roughness, metalness, transparent, opacity, depthWrite, emissive, emissiveIntensity, flatShading: true });
+    this.ownedTextures.push(map); this.dynamicMaterials.push(material); this.surfaceMaterials.set(key, material);
+    return material;
   }
   // material for buildings/structures using one of the 10 generated textures
   building(name, options = {}) {
@@ -289,7 +307,7 @@ export class MaterialLibrary {
     this.dynamicMaterials.push(mat); return mat;
   }
   team(color) { const map = this.textures.uniform; map.repeat.set(3, 3); const mat = new THREE.MeshStandardMaterial({ map, color, emissive: color, emissiveIntensity: .22, flatShading: true, roughness: .9 }); this.dynamicMaterials.push(mat); return mat; }
-  dispose() { Object.values(this.materials).forEach(m => m.dispose()); this.dynamicMaterials.forEach(m => m.dispose()); Object.values(this.textures).forEach(t => t.dispose()); }
+  dispose() { Object.values(this.materials).forEach(m => m.dispose()); this.dynamicMaterials.forEach(m => m.dispose()); this.ownedTextures.forEach(t => t.dispose()); Object.values(this.textures).forEach(t => t.dispose()); this.surfaceMaterials.clear(); }
 }
 
 export function createWaterMaterial(texture) {

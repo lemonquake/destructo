@@ -1,12 +1,13 @@
 export const CAPTURE_SECONDS = 5;
 
 export class DominationSystem {
-  constructor(towers, teams, maxScore = 100) {
+  constructor(towers, teams, maxScore = 100, isHostile = null) {
     this.towers = towers;
     this.teams = teams;
     this.maxScore = Math.max(25, Number(maxScore) || 100);
     this.scores = Object.fromEntries(teams.map(team => [team.id, 0]));
     this.winner = null;
+    this.isHostile = isHostile || ((a, b) => a !== b);
   }
 
   update(dt, combatants) {
@@ -20,15 +21,19 @@ export class DominationSystem {
         const dz = unit.group.position.z - tower.position.z;
         if (dx * dx + dz * dz <= tower.radius * tower.radius) occupants.set(unit.team, (occupants.get(unit.team) || 0) + 1);
       }
-      const present = [...occupants.keys()];
-      tower.contested = present.length > 1;
-      if (present.length === 1) {
-        const teamId = present[0];
-        if (tower.ownerTeam === teamId) {
+      const present = [...occupants.keys()],sides=[];
+      for(const teamId of present){const alliedSide=sides.find(side=>!this.isHostile(side[0],teamId));if(alliedSide)alliedSide.push(teamId);else sides.push([teamId]);}
+      tower.captureSides=sides.map(side=>[...side]);
+      tower.contested = sides.length > 1;
+      if (sides.length === 1) {
+        const side=sides[0],sideLeader=side[0],ownerAllied=tower.ownerTeam&&!this.isHostile(tower.ownerTeam,sideLeader);
+        if (ownerAllied) {
           tower.captureTeam = null;
           tower.captureProgress = 0;
         } else {
-          if (tower.captureTeam !== teamId) { tower.captureTeam = teamId; tower.captureProgress = 0; events.push({ type: 'capture-start', tower, teamId }); }
+          const captureStillAllied=tower.captureTeam&&!this.isHostile(tower.captureTeam,sideLeader);
+          const teamId=captureStillAllied?tower.captureTeam:sideLeader;
+          if (!captureStillAllied) { tower.captureTeam = teamId; tower.captureProgress = 0; events.push({ type: 'capture-start', tower, teamId }); }
           tower.captureProgress = Math.min(CAPTURE_SECONDS, tower.captureProgress + dt);
           if (tower.captureProgress >= CAPTURE_SECONDS) {
             const previousTeam = tower.ownerTeam;
@@ -39,7 +44,7 @@ export class DominationSystem {
             events.push({ type: 'captured', tower, teamId, previousTeam });
           }
         }
-      } else if (present.length === 0) {
+      } else if (sides.length === 0) {
         tower.captureProgress = Math.max(0, tower.captureProgress - dt * .65);
         if (tower.captureProgress === 0) tower.captureTeam = null;
       }

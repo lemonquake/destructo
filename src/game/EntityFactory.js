@@ -50,9 +50,11 @@ export class EntityFactory {
     const grade = opts.grade || 'normal';
     if (grade === 'elite') { const stripe = mesh(new THREE.TorusGeometry(.68, .07, 6, 14), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .6 })); stripe.rotation.x = Math.PI / 2; stripe.position.y = 1.55; group.add(stripe); }
     if (grade === 'special') { group.scale.setScalar(1.12); const core = mesh(new THREE.OctahedronGeometry(.22, 0), this.materials.color(0xa4ecff, { emissive: 0x2fa0e0, emissiveIntensity: 1.5 }), false); core.position.set(0, 1.35, .58); group.add(core); const halo = mesh(new THREE.TorusGeometry(.92, .05, 6, 20), this.materials.color(0x9fe8ff, { emissive: 0x2fa0e0, emissiveIntensity: 1.1 }), false); halo.rotation.x = Math.PI / 2; halo.position.y = .12; group.add(halo); }
-    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
+    const primaryWeaponId=def.weapon==='pistol'?null:def.weapon;
+    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
     this.setWeaponModel(entity, def.weapon, WEAPONS[def.weapon]);
     this.applyPassive(entity);
+    if(entity.primaryWeaponId)entity.primaryWeapon=entity.weapon;
     group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); group.userData.entity = entity; this.scene.add(group); return entity;
   }
   applyPassive(e) {
@@ -60,7 +62,7 @@ export class EntityFactory {
       case 'manabattery': e.maxMp += 50; e.mp = e.maxMp; break;
       case 'juggernaut': e.maxHp += 45; e.hp = e.maxHp; break;
       case 'shieldborn': e.shield = 60; break;
-      case 'longshot': e.weapon = { ...e.weapon, range: e.weapon.range * 1.25 }; break;
+      case 'longshot': e.weapon = { ...e.weapon, effectiveRange: e.weapon.effectiveRange * 1.25 }; break;
     }
   }
   applyCrateVariant(entity, profile) {
@@ -82,26 +84,27 @@ export class EntityFactory {
     const glow = this.materials.color(accentColor, { emissive: accentColor, emissiveIntensity: weapon.crimson ? 2.8 : .8, roughness: .2 });
     const addBox = (s, p, mat = metal, r = null) => { const m = mesh(new THREE.BoxGeometry(...s), mat); m.position.set(...p); if (r) m.rotation.set(...r); root.add(m); return m; };
     const addTube = (radius, length, p, mat = dark, axis = 'x') => { const m = mesh(new THREE.CylinderGeometry(radius, radius, length, 8), mat); m.position.set(...p); m.rotation[axis] = Math.PI / 2; root.add(m); return m; };
+    const addMuzzle=(x,y,z)=>{const anchor=new THREE.Object3D();anchor.name='muzzle-anchor';anchor.position.set(x,y,z);root.add(anchor);return anchor};
     switch (weaponId) {
-      case 'pistol': addBox([.28,.32,.62],[0,0,.25]); addTube(.055,.56,[0,.05,.72]); addBox([.19,.42,.2],[0,-.28,.05],dark,[.18,0,0]); break;
-      case 'needle': addBox([.2,.24,.58],[0,0,.26],accent); addTube(.025,.78,[0,0,.92],glow); addTube(.13,.34,[0,0,.52],glow); break;
-      case 'uzi': addBox([.26,.32,.54],[0,0,.15],dark); addTube(.045,.4,[0,.02,.58],accent); addBox([.15,.42,.22],[0,-.34,.1],metal,[.25,0,0]); break;
-      case 'flamethrower': addBox([.42,.38,.76],[0,0,.22]); addTube(.12,.66,[0,.02,.8],accent); addBox([.2,.34,.3],[0,-.24,-.12],glow); break;
-      case 'railgun': addBox([.34,.34,.98],[0,0,.26],dark); addTube(.04,1.1,[0,.04,1.14],glow); [-.08,.08].forEach(x => addBox([.06,.06,1.0],[x,.04,.92],accent)); break;
-      case 'freezeray': addBox([.44,.38,.68],[0,0,.15],accent); addTube(.08,.75,[0,.02,.82],glow); addBox([.28,.28,.28],[0,-.22,.28],dark); break;
-      case 'sniper': addBox([.3,.3,1.02],[0,0,.38]); addTube(.045,1.12,[0,.02,1.42]); addTube(.1,.5,[0,.23,.3],accent); addBox([.48,.22,.5],[0,-.02,-.42],dark); break;
-      case 'machinegun': addBox([.5,.48,.9],[0,0,.32]); [-.13,0,.13].forEach(x=>{const b=addTube(.045,1,[x,.02,1.15]); b.name='rotary-barrel';}); addTube(.3,.26,[0,-.34,.25],accent,'z'); break;
-      case 'grenade': addBox([.45,.4,.62],[0,0,.18],dark); {const cup=mesh(new THREE.CylinderGeometry(.24,.12,.52,8),metal);cup.rotation.x=Math.PI/2;cup.position.z=.72;root.add(cup);} addBox([.18,.48,.25],[0,-.28,-.05],accent); break;
-      case 'shotgun': [-.12,.12].forEach(x=>addTube(.075,1.02,[x,.04,.9])); addBox([.52,.3,.62],[0,0,.1]); addBox([.4,.28,.42],[0,0,-.42],accent); break;
-      case 'carbine': addBox([.34,.34,.86],[0,0,.3],accent); addTube(.05,.72,[0,.02,.98]); addBox([.42,.22,.4],[0,-.02,-.35]); addBox([.15,.42,.24],[0,-.3,.22],dark,[.28,0,0]); break;
-      case 'mine': addBox([.44,.34,.58],[0,0,.15]); {const disc=mesh(new THREE.CylinderGeometry(.3,.3,.14,10),glow);disc.rotation.x=Math.PI/2;disc.position.z=.66;root.add(disc);} break;
-      case 'smg': addBox([.38,.42,.66],[0,0,.2],dark); addTube(.06,.45,[0,0,.74],accent); addBox([.17,.5,.22],[0,-.34,.18],metal,[.25,0,0]); addBox([.34,.18,.28],[0,.16,-.25],accent); break;
-      case 'rocket': addTube(.24,1.35,[0,.03,.55],metal); addTube(.18,.38,[0,.03,1.4]); for(const x of [-.32,.32]) addBox([.08,.38,.48],[x,0,.05],accent); break;
-      case 'grenadelauncher': addBox([.42,.4,.72],[0,0,.2]); {const drum=mesh(new THREE.CylinderGeometry(.28,.28,.34,8),accent);drum.rotation.z=Math.PI/2;drum.position.set(0,-.2,.22);root.add(drum);} addTube(.12,.72,[0,.02,.91]); break;
-      case 'rifle': addBox([.36,.34,.92],[0,0,.3]); addTube(.055,.78,[0,.02,1.14]); addBox([.16,.48,.25],[0,-.34,.3],accent,[.28,0,0]); addBox([.46,.26,.45],[0,0,-.42],dark); break;
-      case 'tesla': addBox([.46,.42,.7],[0,0,.12],dark); [.45,.72,.99].forEach(z=>{const coil=mesh(new THREE.TorusGeometry(.24,.045,6,12),glow);coil.position.z=z;root.add(coil)}); [-.16,.16].forEach(x=>addTube(.035,.7,[x,0,1.18],accent)); break;
-      case 'plasma': addBox([.48,.42,.82],[0,0,.22]); {const core=mesh(new THREE.IcosahedronGeometry(.22,1),glow);core.position.z=.72;root.add(core);} [-.24,.24].forEach(x=>addBox([.1,.12,.82],[x,0,.82],accent)); break;
-      default: addBox([.3,.3,.8],[0,0,.3]); addTube(.06,.6,[0,0,.92]); break;
+      case 'pistol': addBox([.28,.32,.62],[0,0,.25]); addTube(.055,.56,[0,.05,.72]); addBox([.19,.42,.2],[0,-.28,.05],dark,[.18,0,0]);addMuzzle(0,.05,1); break;
+      case 'needle': addBox([.2,.24,.58],[0,0,.26],accent); addTube(.025,.78,[0,0,.92],glow); addTube(.13,.34,[0,0,.52],glow);addMuzzle(0,0,1.31); break;
+      case 'uzi': addBox([.26,.32,.54],[0,0,.15],dark); addTube(.045,.4,[0,.02,.58],accent); addBox([.15,.42,.22],[0,-.34,.1],metal,[.25,0,0]);addMuzzle(0,.02,.8); break;
+      case 'flamethrower': addBox([.42,.38,.76],[0,0,.22]); addTube(.12,.66,[0,.02,.8],accent); addBox([.2,.34,.3],[0,-.24,-.12],glow);addMuzzle(0,.02,1.14); break;
+      case 'railgun': addBox([.34,.34,.98],[0,0,.26],dark); addTube(.04,1.1,[0,.04,1.14],glow); [-.08,.08].forEach(x => addBox([.06,.06,1.0],[x,.04,.92],accent));addMuzzle(0,.04,1.7); break;
+      case 'freezeray': addBox([.44,.38,.68],[0,0,.15],accent); addTube(.08,.75,[0,.02,.82],glow); addBox([.28,.28,.28],[0,-.22,.28],dark);addMuzzle(0,.02,1.2); break;
+      case 'sniper': addBox([.3,.3,1.02],[0,0,.38]); addTube(.045,1.12,[0,.02,1.42]); addTube(.1,.5,[0,.23,.3],accent); addBox([.48,.22,.5],[0,-.02,-.42],dark);addMuzzle(0,.02,1.99); break;
+      case 'machinegun': addBox([.5,.48,.9],[0,0,.32]); [-.13,0,.13].forEach(x=>{const b=addTube(.045,1,[x,.02,1.15]); b.name='rotary-barrel';addMuzzle(x,.02,1.66)}); addTube(.3,.26,[0,-.34,.25],accent,'z'); break;
+      case 'grenade': addBox([.45,.4,.62],[0,0,.18],dark); {const cup=mesh(new THREE.CylinderGeometry(.24,.12,.52,8),metal);cup.rotation.x=Math.PI/2;cup.position.z=.72;root.add(cup);} addBox([.18,.48,.25],[0,-.28,-.05],accent);addMuzzle(0,0,.99); break;
+      case 'shotgun': [-.12,.12].forEach(x=>{addTube(.075,1.02,[x,.04,.9]);addMuzzle(x,.04,1.42)}); addBox([.52,.3,.62],[0,0,.1]); addBox([.4,.28,.42],[0,0,-.42],accent); break;
+      case 'carbine': addBox([.34,.34,.86],[0,0,.3],accent); addTube(.05,.72,[0,.02,.98]); addBox([.42,.22,.4],[0,-.02,-.35]); addBox([.15,.42,.24],[0,-.3,.22],dark,[.28,0,0]);addMuzzle(0,.02,1.35); break;
+      case 'mine': addBox([.44,.34,.58],[0,0,.15]); {const disc=mesh(new THREE.CylinderGeometry(.3,.3,.14,10),glow);disc.rotation.x=Math.PI/2;disc.position.z=.66;root.add(disc);}addMuzzle(0,0,.82); break;
+      case 'smg': addBox([.38,.42,.66],[0,0,.2],dark); addTube(.06,.45,[0,0,.74],accent); addBox([.17,.5,.22],[0,-.34,.18],metal,[.25,0,0]); addBox([.34,.18,.28],[0,.16,-.25],accent);addMuzzle(0,0,.98); break;
+      case 'rocket': addTube(.24,1.35,[0,.03,.55],metal); addTube(.18,.38,[0,.03,1.4]); for(const x of [-.32,.32]) addBox([.08,.38,.48],[x,0,.05],accent);addMuzzle(0,.03,1.6); break;
+      case 'grenadelauncher': addBox([.42,.4,.72],[0,0,.2]); {const drum=mesh(new THREE.CylinderGeometry(.28,.28,.34,8),accent);drum.rotation.z=Math.PI/2;drum.position.set(0,-.2,.22);root.add(drum);} addTube(.12,.72,[0,.02,.91]);addMuzzle(0,.02,1.28); break;
+      case 'rifle': addBox([.36,.34,.92],[0,0,.3]); addTube(.055,.78,[0,.02,1.14]); addBox([.16,.48,.25],[0,-.34,.3],accent,[.28,0,0]); addBox([.46,.26,.45],[0,0,-.42],dark);addMuzzle(0,.02,1.54); break;
+      case 'tesla': addBox([.46,.42,.7],[0,0,.12],dark); [.45,.72,.99].forEach(z=>{const coil=mesh(new THREE.TorusGeometry(.24,.045,6,12),glow);coil.position.z=z;root.add(coil)}); [-.16,.16].forEach(x=>{addTube(.035,.7,[x,0,1.18],accent);addMuzzle(x,0,1.54)}); break;
+      case 'plasma': addBox([.48,.42,.82],[0,0,.22]); {const core=mesh(new THREE.IcosahedronGeometry(.22,1),glow);core.position.z=.72;root.add(core);} [-.24,.24].forEach(x=>{addBox([.1,.12,.82],[x,0,.82],accent);addMuzzle(x,0,1.25)}); break;
+      default: addBox([.3,.3,.8],[0,0,.3]); addTube(.06,.6,[0,0,.92]);addMuzzle(0,0,1.23); break;
     }
     if (weapon.crimson) {
       const auraMat = new THREE.MeshBasicMaterial({ color: 0xff102c, transparent: true, opacity: .72, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -121,7 +124,7 @@ export class EntityFactory {
     while (model.children.length) root.add(model.children[0]);
     root.userData.auraRings = model.userData.auraRings;
     root.scale.setScalar(1 + Math.min(.22, (weapon.variant?.strength || 0) * .018));
-    entity.weaponId = weaponId; entity.weapon = weapon;
+    entity.weaponId = weaponId; entity.weapon = weapon;entity.muzzleAnchors=[];root.traverse(o=>{if(o.name==='muzzle-anchor')entity.muzzleAnchors.push(o)});
   }
   addHat(group, hat, color) {
     const gold = this.materials.color(0xffd23f, { metalness: .6, roughness: .35 }), dark = this.materials.color(0x2b2f45);
@@ -176,11 +179,11 @@ export class EntityFactory {
     const group = new THREE.Group(); group.position.copy(position); const color = this.teamColor(team);
     const hull = mesh(new THREE.BoxGeometry(3.1, 1.1, 4.1), this.materials.teamTextured('tech_roof', color)); hull.position.y = 1; group.add(hull);
     for (const x of [-1.7, 1.7]) { const tread = mesh(new THREE.BoxGeometry(.55, .75, 4.4), this.materials.building('plating')); tread.position.set(x, .7, 0); group.add(tread); }
-    const turret = new THREE.Group(); const dome = mesh(isAPC?new THREE.BoxGeometry(1.9,.72,1.8):new THREE.CylinderGeometry(1.15, 1.4, .75, 8), this.materials.metal); dome.position.y = 1.75; turret.add(dome); const barrel = mesh(new THREE.CylinderGeometry(isAPC ? .08 : .14,isAPC ? .1 : .18,isAPC?2.2:3.8,8), this.materials.metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0,1.8,isAPC?1.35:1.9); turret.add(barrel); group.add(turret);
+    const turret = new THREE.Group(); const dome = mesh(isAPC?new THREE.BoxGeometry(1.9,.72,1.8):new THREE.CylinderGeometry(1.15, 1.4, .75, 8), this.materials.metal); dome.position.y = 1.75; turret.add(dome); const barrelLength=isAPC?2.2:3.8,barrel = mesh(new THREE.CylinderGeometry(isAPC ? .08 : .14,isAPC ? .1 : .18,barrelLength,8), this.materials.metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0,1.8,isAPC?1.35:1.9);const muzzle=new THREE.Object3D();muzzle.name='muzzle-anchor';muzzle.position.y=barrelLength/2;barrel.add(muzzle);turret.add(barrel); group.add(turret);
     if (mega) { group.scale.setScalar(1.3); const fin = mesh(new THREE.BoxGeometry(.2, 1.1, 1.6), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .5 })); fin.position.set(0, 1.9, -1.6); group.add(fin); }
     const hp = mega ? 900 : isAPC?560:720,passengers=[];
-    const cannon={...WEAPONS.rocket,name:isAPC?'APC Autocannon':'Tank Cannon',damage:isAPC?28:115,rate:isAPC ? .34 : 1.15,speed:isAPC?76:38,range:isAPC?48:62,spread:isAPC ? .014 : .0025,explosive:!isAPC,projectileStyle:isAPC?'tracer':'missile',recoil:isAPC?1.4:8};
-    const entity = { id: crypto.randomUUID(), type: 'vehicle', vehicleKind:isAPC?'apc':'tank', autonomous:false, team, name:isAPC?'Armored Carrier':'Battle Tank', group, turret, head:turret, barrels:[barrel], hp, maxHp: hp, armor:isAPC ? .32 : .42,radius: mega ? 2.7 : 2.1, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), speed:isAPC?6.2:mega?4.4:4.8,turnSpeed:isAPC?1.65:1.25,weaponId:'cannon',weapon:cannon,fireCooldown:0,driver:null,passengers,capacity:3,wheels:[],wheelSpin:0,interactive:true,dead:false };
+    const cannon={...WEAPONS.rocket,name:isAPC?'APC Autocannon':'Tank Cannon',damage:isAPC?28:115,rate:isAPC ? .34 : 1.15,bulletSpeed:isAPC?76:38,shotPower:isAPC?58:68,effectiveRange:isAPC?48:62,spread:isAPC ? .014 : .0025,explosive:!isAPC,projectileStyle:isAPC?'tracer':'missile',recoil:isAPC?1.4:8};
+    const entity = { id: crypto.randomUUID(), type: 'vehicle', vehicleKind:isAPC?'apc':'tank', autonomous:false, team, name:isAPC?'Armored Carrier':'Battle Tank', group, turret, head:turret, barrels:[barrel], muzzleAnchors:[muzzle], hp, maxHp: hp, armor:isAPC ? .32 : .42,radius: mega ? 2.7 : 2.1, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), speed:isAPC?6.2:mega?4.4:4.8,turnSpeed:isAPC?1.65:1.25,weaponId:'cannon',weapon:cannon,fireCooldown:0,driver:null,passengers,capacity:3,wheels:[],wheelSpin:0,interactive:true,dead:false };
     Object.defineProperty(entity,'occupants',{get:()=>[entity.driver,...entity.passengers].filter(Boolean)});
     group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); this.scene.add(group); return entity;
   }
@@ -188,8 +191,8 @@ export class EntityFactory {
     const group = new THREE.Group(); group.position.copy(position); const color = this.teamColor(team);
     const base = mesh(new THREE.CylinderGeometry(.75, .95, .35, 8), this.materials.metal); base.position.y = .18; group.add(base);
     const stem = mesh(new THREE.CylinderGeometry(.18, .25, .9, 6), this.materials.teamTextured('tech_pillar', color)); stem.position.y = .78; group.add(stem);
-    const head = new THREE.Group(); head.position.y = 1.28; const housing = mesh(new THREE.BoxGeometry(.75, .48, .72), this.materials.metal); head.add(housing); const barrel = mesh(new THREE.CylinderGeometry(.07, .09, 1.25, 6), this.materials.metal); barrel.rotation.x = Math.PI / 2; barrel.position.z = .82; head.add(barrel); group.add(head);
-    const entity = { id: crypto.randomUUID(), type: 'turret', team, group, head, barrels: [barrel], hp: 180, maxHp: 180, armor: .22, radius: .85, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), aimPitch: 0, speed: 0, stationary: true, weapon: { ...WEAPONS.machinegun, damage: 10, rate: .16, range: 22 }, fireCooldown: 0, dead: false };
+    const head = new THREE.Group(); head.position.y = 1.28; const housing = mesh(new THREE.BoxGeometry(.75, .48, .72), this.materials.metal); head.add(housing); const barrel = mesh(new THREE.CylinderGeometry(.07, .09, 1.25, 6), this.materials.metal); barrel.rotation.x = Math.PI / 2; barrel.position.z = .82;const muzzle=new THREE.Object3D();muzzle.name='muzzle-anchor';muzzle.position.y=.625;barrel.add(muzzle); head.add(barrel); group.add(head);
+    const entity = { id: crypto.randomUUID(), type: 'turret', team, group, head, barrels: [barrel], muzzleAnchors:[muzzle], hp: 180, maxHp: 180, armor: .22, radius: .85, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), aimPitch: 0, speed: 0, stationary: true, weapon: { ...WEAPONS.machinegun, damage: 10, rate: .16, effectiveRange: 22 }, fireCooldown: 0, dead: false };
     group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); this.scene.add(group); return entity;
   }
   createBaseTurret(team, position) {
@@ -199,10 +202,10 @@ export class EntityFactory {
     const column=mesh(new THREE.CylinderGeometry(.7,1.05,2.15,10),accent);column.position.y=1.5;group.add(column);
     const head=new THREE.Group();head.position.y=2.55;const housing=mesh(new THREE.BoxGeometry(2.6,1.35,2.35),metal);housing.position.y=.15;head.add(housing);
     const cockpit=mesh(new THREE.SphereGeometry(.78,12,8,0,Math.PI*2,0,Math.PI/2),this.materials.color(0x8deaff,{transparent:true,opacity:.7,emissive:0x137fa8,emissiveIntensity:.8}));cockpit.position.set(0,.82,-.25);head.add(cockpit);
-    const barrels=[];for(const x of [-.62,0,.62]){const barrel=mesh(new THREE.CylinderGeometry(.09,.13,2.8,8),metal);barrel.rotation.x=Math.PI/2;barrel.position.set(x,.18,2.05);head.add(barrel);barrels.push(barrel)}
+    const barrels=[],muzzleAnchors=[];for(const x of [-.62,0,.62]){const barrel=mesh(new THREE.CylinderGeometry(.09,.13,2.8,8),metal);barrel.rotation.x=Math.PI/2;barrel.position.set(x,.18,2.05);const muzzle=new THREE.Object3D();muzzle.name='muzzle-anchor';muzzle.position.y=1.4;barrel.add(muzzle);muzzleAnchors.push(muzzle);head.add(barrel);barrels.push(barrel)}
     for(const x of [-1.05,1.05]){const pod=mesh(new THREE.BoxGeometry(.48,.72,1.4),accent);pod.position.set(x,.05,.65);head.add(pod);const lamp=mesh(new THREE.SphereGeometry(.13,8,6),glow,false);lamp.position.set(x,.08,1.42);head.add(lamp)}group.add(head);
     const canvas=document.createElement('canvas');canvas.width=512;canvas.height=180;const ctx=canvas.getContext('2d'),texture=new THREE.CanvasTexture(canvas),warning=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));warning.position.set(0,5.8,0);warning.scale.set(5.8,2.05,1);warning.visible=false;group.add(warning);
-    const entity={id:`${team}-base-turret`,type:'turret',team,group,head,barrels,hp:520,maxHp:520,armor:.38,mp:1,maxMp:1,shield:0,radius:2,velocity:new THREE.Vector3(),aim:new THREE.Vector3(0,0,1),aimPitch:0,speed:0,stationary:true,player:true,weaponId:'machinegun',weapon:{...WEAPONS.machinegun,damage:15,rate:.085,range:55},ammo:50,magazineSize:50,reloadTimer:0,fireCooldown:0,dead:false,baseTurret:true,interactive:true,jellyStrength:.22,delayedExplosion:true,critical:false,explosionTimer:0,rider:null,warning,warningCanvas:canvas,warningContext:ctx,warningTexture:texture};
+    const entity={id:`${team}-base-turret`,type:'turret',team,group,head,barrels,muzzleAnchors,hp:520,maxHp:520,armor:.38,mp:1,maxMp:1,shield:0,radius:2,velocity:new THREE.Vector3(),aim:new THREE.Vector3(0,0,1),aimPitch:0,speed:0,stationary:true,player:true,weaponId:'machinegun',weapon:{...WEAPONS.machinegun,damage:15,rate:.085,effectiveRange:55},ammo:50,magazineSize:50,reloadTimer:0,fireCooldown:0,dead:false,baseTurret:true,interactive:true,jellyStrength:.22,delayedExplosion:true,critical:false,explosionTimer:0,rider:null,warning,warningCanvas:canvas,warningContext:ctx,warningTexture:texture};
     group.userData.entity=entity;group.traverse(o=>{if(o.isMesh)o.userData.entity=entity});this.scene.add(group);return entity;
   }
   createBunker(position) {
@@ -254,6 +257,7 @@ export class EntityFactory {
       if (drop.id === 'health') { const barV = mesh(new THREE.BoxGeometry(.14, .38, .05), new THREE.MeshBasicMaterial({ color: 0xffffff }), false); barV.position.set(0, .55, .27); group.add(barV); const barH = mesh(new THREE.BoxGeometry(.38, .14, .05), new THREE.MeshBasicMaterial({ color: 0xffffff }), false); barH.position.set(0, .55, .27); group.add(barH); }
     }
     const entity = { id: crypto.randomUUID(), type: 'pickup', drop, group, radius: .8, life: drop.droppedWeapon?60:25, velocity:new THREE.Vector3(), angularVelocity:new THREE.Vector3(), physicsActive:false };
+    group.userData.entity=entity;group.traverse(o=>{if(o.isMesh)o.userData.entity=entity});
     this.scene.add(group); return entity;
   }
   // ── Overhead pickup icons: spinning heart / ammo / weapon shown above a unit
@@ -356,8 +360,9 @@ export class EntityFactory {
     const phase = e.animationSeed || 0, auraPulse = 1 + Math.sin(time * 4 + phase) * .08;
     if (e.auraGlow) { e.auraGlow.material.opacity = .58 + Math.sin(time * 4 + phase) * .12; e.auraGlow.scale.set(4.8 * auraPulse, 5.4 * auraPulse, 1); }
     if (e.auraRing) { e.auraRing.scale.setScalar(auraPulse); e.auraRing.rotation.z = time * .28 + phase; }
-    if (e.bodyAura) e.bodyAura.position.copy(e.body.position);
-    if (e.headAura) e.headAura.position.copy(e.head.position);
+    // aura shells hug the torso and head through every lean, twist and squash
+    if (e.bodyAura) { e.bodyAura.position.copy(e.body.position); e.bodyAura.rotation.copy(e.body.rotation); e.bodyAura.scale.copy(e.body.scale).multiplyScalar(1.18); }
+    if (e.headAura) { e.headAura.position.copy(e.head.position); e.headAura.rotation.copy(e.head.rotation); e.headAura.scale.copy(e.head.scale).multiplyScalar(1.22); }
     if (e.state === 'victory') {
       const cycle = time * 12 + phase;
       const jumpHeight = Math.abs(Math.sin(cycle * 0.5)) * 0.45;
@@ -388,33 +393,132 @@ export class EntityFactory {
       e.body.scale.x = e.body.scale.z = THREE.MathUtils.lerp(e.body.scale.x, 1 + crouch * .3, Math.min(1, dt * 12));
       return;
     }
-    const speed = Math.hypot(e.velocity.x, e.velocity.z), moving = speed > .25, ground = e.groundY || 0, airborne = e.group.position.y > ground + .05, cycle = time * 10 + phase;
-    e.recoil = Math.max(0, e.recoil - dt * 5.5);
-    const recoiling = e.recoil > .01;
-    // reset the pose, then layer the active animation on top
-    e.body.position.set(0, 1.15, 0); e.body.rotation.set(0, 0, 0);
-    e.head.position.set(0, 2.15, 0); e.head.rotation.set(e.headPitch || 0, 0, 0);
-    e.weaponGroup.position.set(.72, 1.22, .72); e.weaponGroup.rotation.set(0, 0, 0);
-    let lh = [-.78, 1.24, .12], rh = [.78, 1.24, .12];
-    if (recoiling) {
-      // ATTACK ANIMATION — three styles of recoil & impact while firing
-      const r = e.recoil;
-      if (e.attackStyle === 0) { // kickback lunge: gun slams back, torso leans away
-        e.weaponGroup.position.z = .72 - r * .42; e.body.rotation.x = -r * .3; e.head.position.z = -r * .2; e.body.position.z = -r * .12;
-      } else if (e.attackStyle === 1) { // torque twist: whole torso wrenches sideways with the shot
-        e.body.rotation.y = -r * .5; e.head.rotation.y = r * .32; e.weaponGroup.position.z = .72 - r * .3; e.weaponGroup.rotation.y = -r * .25; e.body.position.z = -r * .08;
-      } else { // pump brace: crouch into the shot, muzzle climbs
-        e.body.position.y = 1.15 - r * .16; e.weaponGroup.rotation.x = -r * .45; e.weaponGroup.position.z = .72 - r * .3; e.head.rotation.x = r * .2; e.body.rotation.x = r * .1;
+    const lerp = THREE.MathUtils.lerp, clamp = THREE.MathUtils.clamp;
+    const speed = Math.hypot(e.velocity.x, e.velocity.z), ground = e.groundY || 0;
+    const airborne = e.group.position.y > ground + .05, vv = e.verticalVelocity || 0;
+    // a hidden weaponGroup (menu joggers, carriers) means the arms swing free
+    const armed = !!e.weapon && e.weaponId !== 'unarmed' && e.weaponGroup.visible;
+    // first person: damp torso motion so the chest never crosses the camera plane
+    const fp = e.firstPerson ? .25 : 1;
+
+    // ── landing: time spent airborne converts into a crouch-and-recover on touchdown
+    if (airborne) e.airTime = (e.airTime || 0) + dt;
+    else { if ((e.airTime || 0) > .12) { e.landTimer = .3; e.landImpact = clamp(.4 + e.airTime * .8, 0, 1); } e.airTime = 0; }
+    e.landTimer = Math.max(0, (e.landTimer || 0) - dt);
+
+    // ── recoil envelope: sharp strike, fast settle; residual heat keeps the
+    //    weapon shouldered for a beat after the last shot instead of snapping down
+    e.recoil = Math.max(0, e.recoil - dt * (e.recoil > .45 ? 7.5 : 4.2));
+    const kick = e.recoil * e.recoil, sway = e.recoil;
+    if (e.recoil > .01) e.aimHeat = 1;
+    e.aimHeat = Math.max(0, (e.aimHeat || 0) - dt * .8);
+    const mountRaw = clamp((e.aimHeat || 0) * 2.6, 0, 1);
+    const mount = armed && !e.carriedCrate ? mountRaw * mountRaw * (3 - 2 * mountRaw) : 0;
+
+    // ── gait: cadence and stride scale with real speed, and the phase accumulates
+    //    so speed changes never pop the legs to a different point in the cycle
+    const topSpeed = e.classDef?.speed || 9, moving = speed > .25 && !airborne;
+    e.stride = lerp(e.stride || 0, moving ? clamp(speed / topSpeed, .35, 1.35) : 0, Math.min(1, dt * 9));
+    if (e.gaitPhase === undefined) e.gaitPhase = phase;
+    if (moving) e.gaitPhase += dt * (7 + 7.5 * Math.min(1, speed / topSpeed));
+    const s = e.stride, g = e.gaitPhase, swing = Math.sin(g);
+    // travel direction in local space so strafing and backpedaling read correctly
+    const yaw = e.group.rotation.y, sy = Math.sin(yaw), cy = Math.cos(yaw), inv = speed > 1e-3 ? 1 / speed : 0;
+    e.moveX = lerp(e.moveX || 0, (e.velocity.x * cy - e.velocity.z * sy) * inv, Math.min(1, dt * 8));
+    e.moveZ = lerp(e.moveZ === undefined ? 1 : e.moveZ, (e.velocity.x * sy + e.velocity.z * cy) * inv, Math.min(1, dt * 8));
+    const mx = e.moveX, mz = e.moveZ;
+
+    // ── base pose (idle is deliberately statue-still: no sway, scan or breathing)
+    let bodyY = 1.15, bodyZ = 0, pitch = 0, twist = 0, roll = 0;
+    let headY = 2.15, headZ = 0, headPitch = e.headPitch || 0, headYaw = 0, headRoll = 0;
+    let wx = .72, wy = 1.22, wz = .72, wPitch = 0, wYaw = 0, wRoll = 0;
+    let lh = [-.78, 1.24, .12], rh = armed ? [.64, 1.24, .46] : [.78, 1.24, .12];
+    let lb = [-.33, .22, .03], rb = [.33, .22, .03];
+    let bounce = 0;
+
+    if (airborne) {
+      // ── JUMP: three readable silhouettes blended by vertical velocity —
+      //    launch (tucked, arms punching up), apex, fall (spread, reaching down)
+      const fall = clamp(.5 - vv * .055, 0, 1), tuck = 1 - fall;
+      const flail = Math.sin(time * 11 + phase) * .09 * fall;
+      lb = [-.34, .22 + .36 * tuck + .1 * fall, .28 * tuck - .05 * fall];
+      rb = [.34, .22 + .2 * tuck + .13 * fall, -.32 * tuck + .1 * fall];
+      lh = [-.86 - .18 * fall, 1.6 + .24 * tuck + .28 * fall + flail, .05 - .1 * fall];
+      rh = [.86 + .18 * fall, 1.6 + .24 * tuck + .28 * fall - flail, .05 - .1 * fall];
+      pitch = (-.17 * tuck + .13 * fall) * fp;
+      headPitch += -.1 * tuck + .16 * fall;
+      wy = 1.32 + .1 * tuck; wPitch = -.22 * tuck + .12 * fall;
+    } else if (s > .02) {
+      // ── RUN: legs stride along the travel direction with real foot lift, arms
+      //    pump opposite the legs, the torso leans in and counter-rotates, and
+      //    the whole frame bounces on each foot plant
+      const strideLen = .38 * s, lift = .12 + .2 * s;
+      const stepL = swing * strideLen, stepR = -swing * strideLen;
+      lb = [-.33 + mx * stepL, .22 + Math.max(0, Math.cos(g)) * lift, .03 + mz * stepL];
+      rb = [.33 + mx * stepR, .22 + Math.max(0, -Math.cos(g)) * lift, .03 + mz * stepR];
+      bounce = Math.abs(Math.cos(g)) * .07 * s;
+      pitch = clamp(mz, -.4, 1) * .17 * s * fp;
+      roll = -mx * .11 * s * fp;
+      twist = swing * .14 * s;
+      headPitch += -pitch * .5; headRoll = -roll * .4; // gaze stays level
+      const pump = .34 + .2 * s, pumpL = -swing * pump, pumpR = swing * pump;
+      const drive = p => Math.max(0, p) * .5; // the forward arm rides high, elbow bent
+      lh = [-.7 + mx * pumpL * .6, 1.22 + drive(pumpL) + bounce, .12 + mz * pumpL];
+      rh = armed
+        ? [.62 + mx * pumpR * .3, 1.23 + drive(pumpR) * .5 + bounce, .42 + mz * pumpR * .55]
+        : [.7 + mx * pumpR * .6, 1.22 + drive(pumpR) + bounce, .12 + mz * pumpR];
+      bodyY += bounce; headY += bounce * .82;
+      wy += bounce * .9; wPitch = -.06 * s + swing * .04 * s; // the carried gun rides the gait
+    }
+    if (!airborne && e.landTimer > 0) {
+      // ── LANDING: impact crouch scaled by fall time, softened when rolling through at speed
+      const c = e.landImpact * (e.landTimer / .3) ** 2 * (1 - .45 * Math.min(1, s));
+      bodyY -= c * .3; headY -= c * .34; pitch += c * .3 * fp; headPitch += c * .18;
+      lh = [lerp(lh[0], -.62, c), lerp(lh[1], 1.02, c), lerp(lh[2], .48, c)];
+      rh = [lerp(rh[0], .62, c), lerp(rh[1], 1.02, c), lerp(rh[2], .48, c)];
+      lb = [lerp(lb[0], -.44, c), lb[1], lerp(lb[2], .14, c)];
+      rb = [lerp(rb[0], .44, c), rb[1], lerp(rb[2], -.1, c)];
+      wy -= c * .2;
+    }
+    if (mount > 0) {
+      // ── COMBAT MOUNT: the weapon rises from hip carry to a two-handed shoulder
+      //    mount (the menu-stage stance), tracking aim pitch; the off-hand braces
+      //    the fore-end and the cheek drops to the stock
+      const aimPitch = clamp(-Math.asin(clamp(e.aim ? e.aim.y : 0, -1, 1)), -.85, .85);
+      const grip = airborne ? mount * .85 : mount;
+      wx = lerp(wx, .34, mount); wy = lerp(wy, 1.5 + bounce * .5, mount); wz = lerp(wz, .55, mount);
+      wPitch = lerp(wPitch, -.05 + aimPitch, mount); wYaw = lerp(wYaw, -.04, mount);
+      lh = [lerp(lh[0], -.18, grip), lerp(lh[1], 1.48 + bounce * .5, grip), lerp(lh[2], 1.05, grip)];
+      rh = [lerp(rh[0], .44, grip), lerp(rh[1], 1.42 + bounce * .5, grip), lerp(rh[2], .5, grip)];
+      headPitch += .07 * mount; headYaw -= .06 * mount;
+      twist *= 1 - mount * .85; // shoulders square up on the target
+      pitch += .05 * mount * fp;
+    }
+    if (e.recoil > .01) {
+      // ── ATTACK: three firing signatures, layered onto the mounted stance
+      if (e.attackStyle === 0) {
+        // kickback lunge — the gun slams straight back and the torso rides the hit
+        wz -= kick * .38; wPitch -= kick * .55;
+        pitch -= sway * .26 * fp; bodyZ -= sway * .12 * fp; headZ -= kick * .1; headPitch -= kick * .2;
+        rh[2] -= kick * .32; rh[1] += kick * .06; lh[2] -= kick * .16;
+      } else if (e.attackStyle === 1) {
+        // torque twist — the shot wrenches the shoulders while the head holds the target
+        twist -= sway * .42 * fp; headYaw += sway * .3; roll += kick * .08 * fp;
+        wz -= kick * .26; wYaw -= kick * .3; wPitch -= kick * .3; wRoll += kick * .16;
+        rh[2] -= kick * .22; lh[2] -= kick * .1; bodyZ -= sway * .07 * fp;
+      } else {
+        // pump brace — crouch into the shot and let the muzzle climb
+        bodyY -= sway * .16; headY -= sway * .18; wPitch -= kick * .7; wz -= kick * .3;
+        pitch += sway * .12 * fp; headPitch += kick * .18;
+        rh[1] -= sway * .08; rh[2] -= kick * .24; lh[1] -= sway * .06; lh[2] -= kick * .1;
       }
-      rh = [.78, 1.24 + r * .1, .12 - r * .2];
-    } else if (airborne) {
-      // JUMP: legs tuck, arms rise, slight forward tilt
-      lh = [-.88, 1.7, .05]; rh = [.88, 1.7, .05];
-      e.body.rotation.x = -.12; e.head.rotation.x = .1;
-    } else if (moving) {
-      lh = [-.78, 1.24 - Math.sin(cycle) * .18, .12]; rh = [.78, 1.24 + Math.sin(cycle) * .18, .12];
-    } else {
-      // Intentionally static: no idle sway, scan, rocking, or breathing offsets.
+    }
+    if (e.stun > 0) {
+      // ── STAGGER: heavy hits leave the unit reeling, arms windmilling for balance
+      const daze = Math.min(1, e.stun), reel = time * 17 + phase;
+      pitch += Math.sin(reel) * .16 * daze * fp; roll += Math.cos(reel * .8) * .14 * daze * fp;
+      headYaw += Math.sin(reel * 1.3) * .24 * daze; headRoll += Math.cos(reel) * .12 * daze;
+      lh = [-.85, 1.5 + Math.sin(reel) * .3 * daze, .1]; rh = [.85, 1.5 - Math.sin(reel) * .3 * daze, .1];
     }
     if (e.carriedCrate) {
       if (e.crateSnappedLocalPos) {
@@ -433,14 +537,18 @@ export class EntityFactory {
       e.weaponGroup.visible = false;
     }
     else e.weaponGroup.visible = true;
+    // ── apply the composed pose in one pass
+    e.body.position.set(0, bodyY, bodyZ); e.body.rotation.set(pitch, twist, roll);
+    e.head.position.set(0, headY, headZ); e.head.rotation.set(headPitch, headYaw, headRoll);
+    e.weaponGroup.position.set(wx, wy, wz); e.weaponGroup.rotation.set(wPitch, wYaw, wRoll);
     e.leftHand.position.set(...lh); e.rightHand.position.set(...rh);
-    if (airborne) { e.leftBoot.position.z = .16; e.rightBoot.position.z = -.16; e.leftBoot.position.y = e.rightBoot.position.y = .34; }
-    else { e.leftBoot.position.y = e.rightBoot.position.y = .22; e.leftBoot.position.z = Math.sin(cycle) * (moving ? .22 : 0); e.rightBoot.position.z = -Math.sin(cycle) * (moving ? .22 : 0); }
+    e.leftBoot.position.set(...lb); e.rightBoot.position.set(...rb);
     e.group.rotation.z = 0;
-    // jump squash & stretch
-    const stretch = airborne ? 1 + Math.min(.18, Math.abs(e.verticalVelocity || 0) * .015) : 1;
-    e.body.scale.y = THREE.MathUtils.lerp(e.body.scale.y, stretch, Math.min(1, dt * 10));
-    e.body.scale.x = e.body.scale.z = THREE.MathUtils.lerp(e.body.scale.x, 1, Math.min(1, dt * 10));
+    // squash & stretch with rough volume preservation: stretched in flight, squashed on impact
+    const stretch = airborne ? 1 + Math.min(.2, Math.abs(vv) * .014)
+      : e.landTimer > 0 ? 1 - e.landImpact * (e.landTimer / .3) * .18 : 1;
+    e.body.scale.y = lerp(e.body.scale.y, stretch, Math.min(1, dt * 12));
+    e.body.scale.x = e.body.scale.z = lerp(e.body.scale.x, 1 + (1 - e.body.scale.y) * .6, Math.min(1, dt * 12));
     const rings=e.weaponGroup.userData.auraRings||[];rings.forEach((ring,i)=>{ring.rotation.z=time*(2.5+i*1.7);ring.material.opacity=.4+Math.sin(time*11+i)*.28;});
     e.bodyAura.material.opacity=.5+Math.sin(time*3+phase)*.1;e.headAura.material.opacity=e.bodyAura.material.opacity;
   }

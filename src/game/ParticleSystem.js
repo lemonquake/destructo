@@ -2,13 +2,21 @@ import * as THREE from 'three';
 
 export class ParticleSystem {
   constructor(scene, heightAt = null) {
-    this.scene=scene;this.heightAt=heightAt;this.fragments=[];this.rings=[];this.stains=[];
+    this.scene=scene;this.heightAt=heightAt;this.fragments=[];this.rings=[];this.stains=[];this.quality=1;this.cameraPosition=new THREE.Vector3();
     const geo=new THREE.BoxGeometry(.16,.16,.16);
     for(let i=0;i<260;i++){const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xff6b3d,transparent:true}));mesh.visible=false;scene.add(mesh);this.fragments.push({mesh,velocity:new THREE.Vector3(),life:0,maxLife:1,isWater:false})}
     const ringGeo=new THREE.RingGeometry(.35,.62,10);for(let i=0;i<28;i++){const mesh=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0x343443,transparent:true,side:THREE.DoubleSide,depthWrite:false}));mesh.visible=false;scene.add(mesh);this.rings.push({mesh,life:0,maxLife:1})}
     // pooled blood stains: reused meshes, faded out and hidden after 3s — no allocation per hit
     const stainGeo=new THREE.CircleGeometry(.55,9);
     for(let i=0;i<32;i++){const mesh=new THREE.Mesh(stainGeo,new THREE.MeshBasicMaterial({color:0x9c1622,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-6}));mesh.rotation.x=-Math.PI/2;mesh.visible=false;scene.add(mesh);this.stains.push({mesh,life:0})}
+
+    // Combat effects are fixed-size pools: firing never creates geometry,
+    // materials, meshes, or lights in the frame loop.
+    this.muzzleFlashes=[];const flashGeo=new THREE.ConeGeometry(.16,.7,6,1,true);flashGeo.translate(0,.35,0);
+    for(let i=0;i<64;i++){const mesh=new THREE.Mesh(flashGeo,new THREE.MeshBasicMaterial({color:0xffdc62,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,side:THREE.DoubleSide}));mesh.visible=false;mesh.renderOrder=20;scene.add(mesh);this.muzzleFlashes.push({mesh,life:0,maxLife:.07})}
+    this.muzzleLights=[];for(let i=0;i<6;i++){const light=new THREE.PointLight(0xffb33a,0,7,2);light.visible=false;scene.add(light);this.muzzleLights.push({light,life:0,maxLife:.055})}
+    this.impactClouds=[];const cloudGeo=new THREE.IcosahedronGeometry(.32,1);
+    for(let i=0;i<48;i++){const mesh=new THREE.Mesh(cloudGeo,new THREE.MeshBasicMaterial({color:0x777781,transparent:true,opacity:0,depthWrite:false,blending:THREE.NormalBlending,toneMapped:false}));mesh.visible=false;scene.add(mesh);this.impactClouds.push({mesh,life:0,maxLife:.5,velocity:new THREE.Vector3(),startScale:1})}
 
     // pooled water ripples: horizontal rings flat on the water plane
     const rippleGeo = new THREE.RingGeometry(.3, .55, 16);
@@ -27,8 +35,18 @@ export class ParticleSystem {
     }
   }
   ground(x,z){return this.heightAt?this.heightAt(x,z):0}
+  setQuality(value=1){this.quality=THREE.MathUtils.clamp(value,.35,1)}
+  activeEffectCount(){return this.fragments.filter(x=>x.life>0).length+this.rings.filter(x=>x.life>0).length+this.stains.filter(x=>x.life>0).length+this.waterRipples.filter(x=>x.life>0).length+this.muzzleFlashes.filter(x=>x.life>0).length+this.impactClouds.filter(x=>x.life>0).length+this.muzzleLights.filter(x=>x.life>0).length}
   burst(position,color=0xff6a37,count=24,power=8){for(let n=0;n<count;n++){const p=this.fragments.find(x=>x.life<=0);if(!p)break;p.life=p.maxLife=.55+Math.random()*.8;p.mesh.visible=true;p.mesh.material.color.setHex(n%4===0?0xffe66c:color);p.mesh.material.opacity=1;p.mesh.position.copy(position);p.mesh.scale.setScalar(.5+Math.random()*1.4);p.velocity.set((Math.random()-.5)*power,Math.random()*power,(Math.random()-.5)*power)}const ring=this.rings.find(x=>x.life<=0);if(ring){ring.life=ring.maxLife=.7;ring.mesh.visible=true;ring.mesh.position.copy(position);ring.mesh.position.y+=.35;ring.mesh.scale.setScalar(.4);ring.mesh.material.opacity=.75;ring.mesh.lookAt(position.x,position.y+8,position.z)}}
-  impact(position,color){this.burst(position,color,5,3)}
+  muzzleFlash(position,direction,weapon){
+    if(!position)return;const flash=this.muzzleFlashes.find(item=>item.life<=0);if(flash){const energy=['plasma','arc'].includes(weapon.projectileStyle),rocket=['rocket','missile'].includes(weapon.projectileStyle),flame=weapon.projectileStyle==='plasma'&&weapon.shotPower<30,launch=Boolean(weapon.mine);flash.life=flash.maxLife=flame ? .11 : rocket ? .09 : energy ? .08 : .055;flash.mesh.visible=true;flash.mesh.position.copy(position);flash.mesh.material.color.setHex(energy?weapon.color:flame?0xff6428:launch?0x9eff8a:0xffdc62);flash.mesh.material.opacity=1;const dir=(direction?.lengthSq?.()>0?direction:new THREE.Vector3(0,0,1)).clone().normalize();flash.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);const scale=launch?.65:flame?1.75:rocket?1.35:energy?1.15:weapon.pellets?1.25:1;flash.mesh.scale.set(scale,scale*(flame?1.8:1),scale);flash.mesh.rotateY(Math.random()*Math.PI*2)}
+    if(this.quality<.55||position.distanceToSquared(this.cameraPosition)>45*45)return;const slot=this.muzzleLights.find(item=>item.life<=0);if(slot){slot.life=slot.maxLife=.05;slot.light.visible=true;slot.light.position.copy(position);slot.light.color.setHex(weapon?.color||0xffb33a);slot.light.intensity=weapon?.explosive?3.2:2.1;slot.light.distance=weapon?.explosive?10:7}
+  }
+  impact(position,color,options={}){
+    const normal=options.normal?.clone?.().normalize()||new THREE.Vector3(0,1,0),kind=options.kind||'projectile',cloud=this.impactClouds.find(item=>item.life<=0);if(cloud){cloud.life=cloud.maxLife=kind==='explosive' ? .75 : kind==='boundary' ? .3 : .48;cloud.mesh.visible=true;cloud.mesh.position.copy(position).addScaledVector(normal,.08);cloud.mesh.material.color.setHex(kind==='boundary'?0x8695aa:options.surface==='water'?0x8be5ff:options.surface==='dirt'?0x8d7763:0x656873);cloud.mesh.material.opacity=kind==='explosive' ? .8 : .6;cloud.startScale=kind==='explosive'?1.5:.55;cloud.mesh.scale.setScalar(cloud.startScale);cloud.velocity.copy(normal).multiplyScalar(kind==='explosive'?2.2:.65)}
+    const surfaceColors={dirt:0x8d7763,rock:0x777b82,water:0x8be5ff,metal:0xaeb8c5,structure:0x8b8f99,wood:0x8b5a35,tree:0x65704b,boundary:0x8695aa},debrisColor=surfaceColors[options.surface]||color,count=Math.max(2,Math.round((kind==='explosive'?14:7)*this.quality));for(let n=0;n<count;n++){const p=this.fragments.find(x=>x.life<=0);if(!p)break;p.isWater=false;p.life=p.maxLife=.2+Math.random()*.42;p.mesh.visible=true;p.mesh.material.color.setHex(n%3===0?0xfff1a6:debrisColor);p.mesh.material.opacity=1;p.mesh.position.copy(position).addScaledVector(normal,.06);p.mesh.scale.setScalar(.22+Math.random()*.38);const tangent=new THREE.Vector3((Math.random()-.5)*2,Math.random()*.7,(Math.random()-.5)*2).normalize();p.velocity.copy(normal).multiplyScalar(1.5+Math.random()*3.5).addScaledVector(tangent,2+Math.random()*5)}
+    if(options.surface==='water')this.waterSplash(position,4,Math.max(6,Math.round(12*this.quality)),.7)
+  }
   // blood spray on hit + a stain splattered on the ground under the victim
   blood(position,direction=null,count=10){
     for(let n=0;n<count;n++){const p=this.fragments.find(x=>x.life<=0);if(!p)break;p.life=p.maxLife=.4+Math.random()*.5;p.mesh.visible=true;p.mesh.material.color.setHex(n%3===0?0xd42535:0x8e1220);p.mesh.material.opacity=1;p.mesh.position.copy(position);p.mesh.scale.setScalar(.35+Math.random()*.8);p.velocity.set((Math.random()-.5)*5,2+Math.random()*4.5,(Math.random()-.5)*5);if(direction)p.velocity.addScaledVector(direction,3.5)}
@@ -66,6 +84,7 @@ export class ParticleSystem {
     }
   }
   update(dt,camera){
+    if(camera?.position)this.cameraPosition.copy(camera.position);
     for(const p of this.fragments){
       if(p.life<=0)continue;
       p.life-=dt;
@@ -95,5 +114,8 @@ export class ParticleSystem {
       r.mesh.scale.setScalar(r.startScale+t*r.targetScale);
       r.mesh.material.opacity=(1-t)*0.75;
     }
+    for(const flash of this.muzzleFlashes){if(flash.life<=0)continue;flash.life-=dt;if(flash.life<=0){flash.mesh.visible=false;continue}const t=flash.life/flash.maxLife;flash.mesh.material.opacity=t;flash.mesh.scale.multiplyScalar(1+dt*7)}
+    for(const slot of this.muzzleLights){if(slot.life<=0)continue;slot.life-=dt;if(slot.life<=0){slot.light.visible=false;slot.light.intensity=0;continue}slot.light.intensity*=Math.pow(.01,dt/slot.maxLife)}
+    for(const cloud of this.impactClouds){if(cloud.life<=0)continue;cloud.life-=dt;if(cloud.life<=0){cloud.mesh.visible=false;continue}const t=1-cloud.life/cloud.maxLife;cloud.mesh.position.addScaledVector(cloud.velocity,dt);cloud.velocity.multiplyScalar(Math.pow(.22,dt));cloud.mesh.scale.setScalar(cloud.startScale*(1+t*2.7));cloud.mesh.material.opacity=(1-t)*.62;cloud.mesh.rotation.x+=dt*1.8;cloud.mesh.rotation.y+=dt*2.3}
   }
 }

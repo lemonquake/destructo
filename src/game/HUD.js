@@ -1,7 +1,7 @@
 export class HUD {
   constructor() {
     this.root = document.querySelector('#hud');
-    this.el = Object.fromEntries(['hp-fill', 'mp-fill', 'hp-title', 'hp-label', 'mp-label', 'shield-label', 'weapon-name', 'ammo-label', 'ability-label', 'boss-fill', 'squad-readout', 'chips-readout', 'interaction', 'toast', 'turret-warning', 'builder-cells', 'objective', 'crosshair', 'info-panel', 'damage-numbers', 'buff-readout', 'squad-stats'].map(id => [id, document.querySelector(`#${id}`)]));
+    this.el = Object.fromEntries(['hp-fill', 'mp-fill', 'hp-title', 'hp-label', 'mp-label', 'shield-label', 'weapon-name', 'weapon-ballistics', 'ammo-label', 'ability-label', 'boss-fill', 'squad-readout', 'chips-readout', 'interaction', 'toast', 'turret-warning', 'builder-cells', 'objective', 'crosshair', 'info-panel', 'damage-numbers', 'buff-readout', 'squad-stats'].map(id => [id, document.querySelector(`#${id}`)]));
     this.toastTimer = 0;
     this.el['builder-cells'].innerHTML = '<i></i>'.repeat(12);
     this._squadKey = ''; this._squadCards = new Map();
@@ -77,9 +77,10 @@ export class HUD {
     this.el['hp-label'].textContent = mountedTurret?`${Math.ceil(player.hp)} / ${player.maxHp}`:Math.ceil(player.hp); this.el['mp-label'].textContent = mountedTurret?'ARMORED':Math.ceil(player.mp);
     this.el['shield-label'].textContent = player.shield > 0 ? `+${Math.ceil(player.shield)}` : '';
     this.el['weapon-name'].textContent = player.weapon.name.toUpperCase();
+    if (this.el['weapon-ballistics']) this.el['weapon-ballistics'].textContent = player.weapon.ballistic === false ? 'STATIONARY DEPLOYABLE' : `SPEED ${Math.round(player.weapon.bulletSpeed || 0)} · POWER ${Math.round(player.weapon.shotPower || 0)}`;
     this.el['ammo-label'].textContent = player.weaponId === 'pistol' ? '∞' : Math.max(0, Math.floor(player.ammo ?? 0));
     const vehicle=player.mountedMotorcycle,isDriver=vehicle?.driver===player,isTankDriver=isDriver&&vehicle?.vehicleKind==='tank',isBackrider=!isDriver&&vehicle?.type==='motorcycle';
-    this.el['ability-label'].textContent = player.baseTurret ? `${player.critical?`GET OUT! ${player.explosionTimer.toFixed(1)}s`:player.reloadTimer>0?`RELOADING ${player.reloadTimer.toFixed(1)}s`:'E · EXIT TURRET'}` : player.mountedBunker?'E · EXIT BUNKER':vehicle?(isTankDriver?'WASD HULL · MOUSE TURRET · LMB CANNON · E EXIT':isDriver?'W/S THROTTLE · MOUSE + A/D STEER · E EXIT':isBackrider?'MOUSE LOOK · LMB WEAPON · E EXIT':'MOUSE FREELOOK · WEAPONS SAFE · E EXIT'):`Q · ${(player.active ? player.active.name : player.classDef.ability).toUpperCase()} · H GRENADE ${player.grenades||0}/2`;
+    this.el['ability-label'].textContent = player.baseTurret ? `${player.critical?`GET OUT! ${player.explosionTimer.toFixed(1)}s`:player.reloadTimer>0?`RELOADING ${player.reloadTimer.toFixed(1)}s`:'E · EXIT TURRET'}` : player.mountedBunker?'E · EXIT BUNKER':vehicle?(isTankDriver?'WASD HULL · MOUSE TURRET · LMB CANNON · E EXIT':isDriver?'W/S THROTTLE · MOUSE + A/D STEER · E EXIT':isBackrider?'MOUSE LOOK · LMB WEAPON · E EXIT':'MOUSE FREELOOK · WEAPONS SAFE · E EXIT'):`1 PRIMARY · 2 PISTOL · G GRENADE ${player.grenades||0}/2 · T THROW · Q ${(player.active ? player.active.name : player.classDef.ability).toUpperCase()}`;
     const warning=this.el['turret-warning'];if(warning){const evacuate=mountedTurret&&player.critical;warning.classList.toggle('hidden',!evacuate);if(evacuate)warning.querySelector('span').textContent=`${player.explosionTimer.toFixed(1)}s`;}
     const bossPanel = document.querySelector('#boss-panel');
     if (factory) { bossPanel.classList.remove('hidden'); this.el['boss-fill'].style.width = `${Math.max(0, factory.hp / factory.maxHp * 100)}%`; }
@@ -98,11 +99,12 @@ export class HUD {
   damage() { const el = document.querySelector('#damage-flash'); el.style.opacity = '.72'; setTimeout(() => el.style.opacity = '0', 70); }
   // custom crosshair cursor: follows the mouse; turns red + rotates over enemies;
   // when locked it clamps onto the target with the LOCK-ON treatment
-  setCrosshair(x, y, overEnemy, locked) {
+  setCrosshair(x, y, overEnemy, locked, outOfRange=false) {
     const c = this.el.crosshair;
     c.style.transform = `translate(${x}px, ${y}px) translate(-50%,-50%)`;
     c.classList.toggle('enemy', Boolean(overEnemy));
     c.classList.toggle('locked', Boolean(locked));
+    c.classList.toggle('out-of-range',Boolean(outOfRange));
   }
   // one-shot punch animation when a lock is acquired
   lockPulse() {
@@ -136,6 +138,15 @@ export class HUD {
   showInfo(entity, x, y) {
     const panel = this.el['info-panel'];
     if (!entity) { panel.classList.add('hidden'); return; }
+    if (entity.type === 'pickup' && entity.drop?.id === 'weapon') {
+      const weapon = entity.drop.weapon;
+      panel.innerHTML = `<strong style="color:#ffd23f">${String(weapon?.name || entity.drop.weaponId || 'WEAPON').toUpperCase()}</strong>
+        <em>WEAPON PICKUP · ${entity.drop.ammo || 0} AMMO</em>
+        <span>BULLET SPEED ${Math.round(weapon?.bulletSpeed || 0)}</span>
+        <span>SHOT POWER ${Math.round(weapon?.shotPower || 0)}</span>`;
+      panel.style.left = `${Math.min(innerWidth - 190, x + 22)}px`; panel.style.top = `${Math.min(innerHeight - 140, y + 18)}px`;
+      panel.classList.remove('hidden'); return;
+    }
     const name = entity.classDef?.name || entity.kind || entity.type;
     const grade = entity.grade && entity.grade !== 'normal' ? ` · ${entity.grade.toUpperCase()}` : '';
     const skills = [entity.passive ? `◆ ${entity.passive.name}` : '', entity.active ? `★ ${entity.active.name}` : ''].filter(Boolean).join('<br>');

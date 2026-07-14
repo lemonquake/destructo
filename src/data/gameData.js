@@ -20,6 +20,41 @@ export function defaultTeamSetup(count = 2) {
   return Array.from({ length: count }, (_, i) => ({ name: DEFAULT_TEAM_NAMES[i], colorIndex: i, group: i, uniformIndex: i % 10, isHuman: i === 0 }));
 }
 
+// ── Alliance grouping (team-oriented Deathmatch setup) ───────────────────────
+// Teams sharing a group index are allied. Groups are kept compact (0..k) so the
+// setup UI can render them as columns A, B, C… with no gaps.
+export const MAX_ALLIANCES = 5;
+export function normalizeAllianceGroups(setup) {
+  const groups = [...new Set(setup.map(t => t.group))].sort((a, b) => a - b);
+  const remap = new Map(groups.map((g, i) => [g, i]));
+  for (const t of setup) t.group = remap.get(t.group);
+  return setup;
+}
+// Move one team a column left (-1) or right (+1). Moving right past the last
+// column spins the team off into a brand-new alliance (bounded by
+// MAX_ALLIANCES); a team already alone at the end has nowhere to go.
+export function shiftTeamAlliance(setup, index, dir) {
+  const team = setup[index];
+  if (!team || !dir) return setup;
+  const groups = [...new Set(setup.map(t => t.group))].sort((a, b) => a - b);
+  const pos = groups.indexOf(team.group);
+  const targetPos = pos + Math.sign(dir);
+  if (targetPos < 0) return normalizeAllianceGroups(setup);
+  if (targetPos >= groups.length) {
+    const alone = setup.filter(t => t.group === team.group).length === 1;
+    if (!alone && groups.length < Math.min(setup.length, MAX_ALLIANCES)) team.group = Math.max(...groups) + 1;
+  } else {
+    team.group = groups[targetPos];
+  }
+  return normalizeAllianceGroups(setup);
+}
+// "2v2", "3v1", "1v1v1v1" — the at-a-glance shape of the battle.
+export function allianceSummary(setup) {
+  const counts = {};
+  for (const t of setup) counts[t.group] = (counts[t.group] || 0) + 1;
+  return Object.keys(counts).sort((a, b) => a - b).map(g => counts[g]).join('v');
+}
+
 export const CLASSES = Object.freeze({
   scout: { name: 'Scout', hp: 100, mp: 50, speed: 13.175, weapon: 'pistol', ability: 'Tactical Sprint', cost: 15, cooldown: 8 },
   medic: { name: 'Medic', hp: 120, mp: 100, speed: 8.32, weapon: 'uzi', ability: 'Heal', cost: 10, cooldown: 6 },
@@ -35,24 +70,24 @@ export const CLASSES = Object.freeze({
 
 // recoil = how hard the shooter is physically shoved backwards per shot (m/s impulse)
 export const WEAPONS = Object.freeze({
-  pistol: { name: 'Combat Pistol', damage: 8, rate: .34, speed: 63, range: 38, spread: .0144, knockback: 2.5, recoil: .7, color: 0xffdc55, projectileStyle: 'slug' },
-  needle: { name: 'Needle Dart Gun', damage: 7, rate: .28, speed: 57, range: 32, spread: .02, knockback: 1.5, recoil: .4, color: 0x78ffbf, projectileStyle: 'dart' },
-  uzi: { name: 'Uzi', damage: 4, rate: .08, speed: 70, range: 28, spread: .04, knockback: 1.2, recoil: .5, color: 0xffea77, projectileStyle: 'tracer' },
-  flamethrower: { name: 'Flamethrower', damage: 6, rate: .07, speed: 45, range: 20, spread: .08, knockback: 1, recoil: .2, color: 0xff5500, projectileStyle: 'plasma' },
-  railgun: { name: 'Hyper Railgun', damage: 85, rate: 1.8, speed: 150, range: 65, spread: .001, knockback: 12, recoil: 4.8, color: 0x33ff33, projectileStyle: 'lance' },
-  freezeray: { name: 'Cryo Freeze Ray', damage: 8, rate: .15, speed: 60, range: 35, spread: .03, knockback: 2, recoil: .5, color: 0x33ffff, projectileStyle: 'arc' },
-  sniper: { name: 'High-Caliber Rifle', damage: 48, rate: 1.3, speed: 112.5, range: 70, spread: .0016, knockback: 8, recoil: 3.4, color: 0xa7eeff, projectileStyle: 'lance' },
-  machinegun: { name: 'Heavy Machinegun', damage: 13, rate: .13, speed: 75, range: 45, spread: .026, knockback: 3, recoil: 1.05, color: 0xffc44a, projectileStyle: 'tracer' },
-  grenade: { name: 'Mortar Grenades', damage: 70, rate: 1.2, speed: 27, range: 30, spread: .008, knockback: 14, recoil: 2.6, explosive: true, gravity: 16, color: 0xff7956, projectileStyle: 'grenade' },
-  shotgun: { name: 'Dual Shotguns', damage: 13, pellets: 12, rate: .78, speed: 67.5, range: 24, spread: .092, knockback: 8, recoil: 5.5, color: 0xffb45b, projectileStyle: 'pellet' },
-  carbine: { name: 'Officer Carbine', damage: 15, rate: .25, speed: 78, range: 42, spread: .018, knockback: 3.5, recoil: 1.1, color: 0xffe06b, projectileStyle: 'bolt' },
-  mine: { name: 'Proximity Mines', damage: 75, rate: 1.8, speed: 0, range: 2, spread: 0, knockback: 15, recoil: 0, explosive: true, mine: true, color: 0xff4e66, projectileStyle: 'mine' },
-  smg: { name: 'SMG', damage: 10, rate: .12, speed: 69, range: 30, spread: .034, knockback: 2, recoil: .62, color: 0xffef8b, projectileStyle: 'tracer' },
-  rocket: { name: 'Rocket Launcher', damage: 95, rate: 1.5, speed: 26, range: 44, spread: .0064, knockback: 18, recoil: 7.5, explosive: true, color: 0xff5a3c, projectileStyle: 'rocket' },
-  grenadelauncher: { name: 'Grenade Launcher', damage: 60, rate: 1.0, speed: 30, range: 35, spread: .016, knockback: 12, recoil: 2.8, explosive: true, gravity: 16, fuse: 1.0, color: 0xffaa44, projectileStyle: 'grenade' },
-  rifle: { name: 'Assault Rifle', damage: 18, rate: .18, speed: 82.5, range: 50, spread: .012, knockback: 4, recoil: 1.2, color: 0xffea77, projectileStyle: 'bolt' },
-  tesla: { name: 'Tesla Cannon', damage: 14, rate: .15, speed: 67.5, range: 32, spread: .048, knockback: 3, recoil: .8, color: 0x88ffff, projectileStyle: 'arc' },
-  plasma: { name: 'Plasma Rifle', damage: 25, rate: .4, speed: 57, range: 40, spread: .02, knockback: 6, recoil: 1.8, color: 0xff33ff, projectileStyle: 'plasma' },
+  pistol: { name: 'Combat Pistol', damage: 8, rate: .34, bulletSpeed: 63, shotPower: 50, effectiveRange: 38, ballistic: true, spread: .0144, knockback: 2.5, recoil: .7, color: 0xffdc55, projectileStyle: 'slug' },
+  needle: { name: 'Needle Dart Gun', damage: 7, rate: .28, bulletSpeed: 57, shotPower: 46, effectiveRange: 32, ballistic: true, spread: .02, knockback: 1.5, recoil: .4, color: 0x78ffbf, projectileStyle: 'dart' },
+  uzi: { name: 'Uzi', damage: 4, rate: .08, bulletSpeed: 70, shotPower: 48, effectiveRange: 28, ballistic: true, spread: .04, knockback: 1.2, recoil: .5, color: 0xffea77, projectileStyle: 'tracer' },
+  flamethrower: { name: 'Flamethrower', damage: 6, rate: .07, bulletSpeed: 45, shotPower: 22, effectiveRange: 20, ballistic: true, spread: .08, knockback: 1, recoil: .2, color: 0xff5500, projectileStyle: 'plasma' },
+  railgun: { name: 'Hyper Railgun', damage: 85, rate: 1.8, bulletSpeed: 150, shotPower: 90, effectiveRange: 65, ballistic: true, spread: .001, knockback: 12, recoil: 4.8, color: 0x33ff33, projectileStyle: 'lance' },
+  freezeray: { name: 'Cryo Freeze Ray', damage: 8, rate: .15, bulletSpeed: 60, shotPower: 42, effectiveRange: 35, ballistic: true, spread: .03, knockback: 2, recoil: .5, color: 0x33ffff, projectileStyle: 'arc' },
+  sniper: { name: 'High-Caliber Rifle', damage: 48, rate: 1.3, bulletSpeed: 112.5, shotPower: 80, effectiveRange: 70, ballistic: true, spread: .0016, knockback: 8, recoil: 3.4, color: 0xa7eeff, projectileStyle: 'lance' },
+  machinegun: { name: 'Heavy Machinegun', damage: 13, rate: .13, bulletSpeed: 75, shotPower: 52, effectiveRange: 45, ballistic: true, spread: .026, knockback: 3, recoil: 1.05, color: 0xffc44a, projectileStyle: 'tracer' },
+  grenade: { name: 'Mortar Grenades', damage: 70, rate: 1.2, bulletSpeed: 27, shotPower: 38, effectiveRange: 30, ballistic: true, spread: .008, knockback: 14, recoil: 2.6, explosive: true, color: 0xff7956, projectileStyle: 'grenade' },
+  shotgun: { name: 'Dual Shotguns', damage: 13, pellets: 12, rate: .78, bulletSpeed: 67.5, shotPower: 44, effectiveRange: 24, ballistic: true, spread: .092, knockback: 8, recoil: 5.5, color: 0xffb45b, projectileStyle: 'pellet' },
+  carbine: { name: 'Officer Carbine', damage: 15, rate: .25, bulletSpeed: 78, shotPower: 55, effectiveRange: 42, ballistic: true, spread: .018, knockback: 3.5, recoil: 1.1, color: 0xffe06b, projectileStyle: 'bolt' },
+  mine: { name: 'Proximity Mines', damage: 75, rate: 1.8, bulletSpeed: 0, shotPower: 0, effectiveRange: 2, ballistic: false, spread: 0, knockback: 15, recoil: 0, explosive: true, mine: true, color: 0xff4e66, projectileStyle: 'mine' },
+  smg: { name: 'SMG', damage: 10, rate: .12, bulletSpeed: 69, shotPower: 48, effectiveRange: 30, ballistic: true, spread: .034, knockback: 2, recoil: .62, color: 0xffef8b, projectileStyle: 'tracer' },
+  rocket: { name: 'Rocket Launcher', damage: 95, rate: 1.5, bulletSpeed: 26, shotPower: 60, effectiveRange: 44, ballistic: true, spread: .0064, knockback: 18, recoil: 7.5, explosive: true, color: 0xff5a3c, projectileStyle: 'rocket' },
+  grenadelauncher: { name: 'Grenade Launcher', damage: 60, rate: 1.0, bulletSpeed: 30, shotPower: 42, effectiveRange: 35, ballistic: true, spread: .016, knockback: 12, recoil: 2.8, explosive: true, color: 0xffaa44, projectileStyle: 'grenade' },
+  rifle: { name: 'Assault Rifle', damage: 18, rate: .18, bulletSpeed: 82.5, shotPower: 58, effectiveRange: 50, ballistic: true, spread: .012, knockback: 4, recoil: 1.2, color: 0xffea77, projectileStyle: 'bolt' },
+  tesla: { name: 'Tesla Cannon', damage: 14, rate: .15, bulletSpeed: 67.5, shotPower: 44, effectiveRange: 32, ballistic: true, spread: .048, knockback: 3, recoil: .8, color: 0x88ffff, projectileStyle: 'arc' },
+  plasma: { name: 'Plasma Rifle', damage: 25, rate: .4, bulletSpeed: 57, shotPower: 50, effectiveRange: 40, ballistic: true, spread: .02, knockback: 6, recoil: 1.8, color: 0xff33ff, projectileStyle: 'plasma' },
 });
 
 // ── Crates ────────────────────────────────────────────────────────────────────
@@ -91,8 +126,9 @@ export function buildWeaponVariant(weaponId, crates = []) {
     name: `${profile.label} ${base.name}`,
     baseName: base.name,
     damage: Math.round(base.damage * (1 + power * .12)),
-    speed: base.speed * (1 + power * .065),
-    range: base.range * (1 + power * .025),
+    bulletSpeed: base.bulletSpeed * (1 + power * .065),
+    shotPower: Math.min(100, base.shotPower + power * 2),
+    effectiveRange: base.effectiveRange * (1 + power * .025),
     knockback: base.knockback * (1 + power * .07),
     projectileScale: 1 + power * .11,
     rarityColor: dominantType.color,
@@ -253,7 +289,7 @@ export const COSMETICS = Object.freeze([
   { id: 'stripes', kind: 'skin', name: 'Racing Stripes', price: 550 },
 ]);
 
-export const SETTINGS_DEFAULTS = Object.freeze({ shadows: true, volume: .55, cameraShake: true });
+export const SETTINGS_DEFAULTS = Object.freeze({ shadows: true, volume: .55, cameraShake: true, musicMuted: false, soundsMuted: false });
 
 export const MISSIONS = Object.freeze({
   skirmish: { id: 'skirmish', name: 'Battle Royale Skirmish', type: 'skirmish', briefing: 'Up to 10 teams clash on the hills. Destroy every enemy base — when your base falls and your squad is wiped, you are out.', objective: 'Eliminate all enemy teams', reward: 600 },

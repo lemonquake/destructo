@@ -108,6 +108,27 @@ const createMockGame = (overrides = {}) => {
 };
 
 describe('Observer camera controls', () => {
+  it('cycles Q/E units and R teams in setup order with wrapping and eliminated-team filtering',()=>{
+    const unit=(id,team)=>({id,team,type:'unit',dead:false,hp:100,classDef:{name:id},group:{position:new THREE.Vector3()}}),blue1=unit('blue-1','blue'),blue2=unit('blue-2','blue'),red1=unit('red-1','red');
+    const elements={'obs-team-select':{value:'blue'},'obs-unit-select':{value:'0',innerHTML:'',appendChild:vi.fn()}},original=global.document.getElementById,originalCreate=global.document.createElement;global.document.getElementById=id=>elements[id]||null;global.document.createElement=()=>({value:'',textContent:''});
+    const game=createMockGame({observerMode:'follow',observerTarget:blue1,combatants:[blue1,blue2,red1],teams:[{id:'blue',eliminated:false},{id:'gone',eliminated:true},{id:'red',eliminated:false}]});
+    game.cycleObserverUnit(1);expect(game.observerTarget).toBe(blue2);game.cycleObserverUnit(1);expect(game.observerTarget).toBe(blue1);game.cycleObserverUnit(-1);expect(game.observerTarget).toBe(blue2);
+    game.cycleObserverTeam(1);expect(game.observerTarget).toBe(red1);expect(elements['obs-team-select'].value).toBe('red');game.cycleObserverTeam(1);expect(game.observerTarget).toBe(blue1);
+    global.document.getElementById=original;global.document.createElement=originalCreate;
+  });
+
+  it('keeps cycle shortcuts Follow-only while preserving Freelook Q/E altitude movement',()=>{
+    const game=createMockGame({observerMode:'follow'}),pressed=new Set(['KeyQ','KeyR']);game.cycleObserverUnit=vi.fn();game.cycleObserverTeam=vi.fn();game.input.consume=key=>pressed.delete(key);
+    game.updateObserverInput();expect(game.cycleObserverUnit).toHaveBeenCalledWith(-1);expect(game.cycleObserverTeam).toHaveBeenCalledWith(1);
+    game.observerMode='free';game.cycleObserverUnit.mockClear();game.input.keys.add('KeyQ');const before=game.freeLookPosition.y;game.updateObserverCamera(.1);expect(game.freeLookPosition.y).toBeGreaterThan(before);expect(game.cycleObserverUnit).not.toHaveBeenCalled();
+  });
+
+  it('automatically selects another living unit on the same team after a followed death',()=>{
+    const dead={id:'dead',team:'blue',type:'unit',dead:true,group:{position:new THREE.Vector3()}},alive={id:'alive',team:'blue',type:'unit',dead:false,hp:80,classDef:{name:'Scout'},group:{position:new THREE.Vector3()}},teamSelect={value:'blue'},unitSelect={value:'0',innerHTML:''},elements={'obs-team-select':teamSelect,'obs-unit-select':unitSelect,'obs-clock':{textContent:''},'obs-prev-unit':{},'obs-next-unit':{},'obs-next-team':{}},original=global.document.getElementById;global.document.getElementById=id=>elements[id]||null;
+    const game=createMockGame({observerMode:'follow',observerTarget:dead,combatants:[dead,alive],teams:[{id:'blue',eliminated:false}],elapsed:3,updateObserverStrength:vi.fn(),refreshObserverOdds:vi.fn(),observerBet:null});game.updateObserverUI();expect(game.observerTarget).toBe(alive);expect(teamSelect.value).toBe('blue');
+    global.document.getElementById=original;
+  });
+
   it('correctly rotates Freelook camera horizontally (non-inverted)', () => {
     const game = createMockGame({ observerMode: 'free', freeLookYaw: 0 });
     game.input.mouse.down = true;
@@ -166,6 +187,13 @@ describe('Observer camera controls', () => {
 
     expect(game.camera.fov).toBe(48);
     expect(game.camera.updateProjectionMatrix).toHaveBeenCalled();
+  });
+
+  it('resets camera zoom, orbit, and transform before every mode switch',()=>{
+    const game=createMockGame({observerMode:'pov',obsZoom:4,obsRotation:2.2,obsPitch:-1});
+    game.camera.fov=110;game.camera.position.set(99,2,-80);
+    Game.prototype.setObserverMode.call(game,'follow');
+    expect(game.observerMode).toBe('follow');expect(game.obsZoom).toBe(1);expect(game.obsRotation).toBe(0);expect(game.obsPitch).toBe(.65);expect(game.camera.fov).toBe(48);expect(game.camera.position).toEqual(new THREE.Vector3(0,21,20));
   });
 
   it('defaults to Freelook mode when entering observer mode', () => {

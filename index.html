@@ -32,7 +32,7 @@
         </div>
         <section id="tactical-panel" class="tactical-panel">
           <canvas id="minimap" width="190" height="190" aria-label="Tactical minimap. Click to scout an area."></canvas>
-          <div class="doctrine"><span>AI DOCTRINE · C / V</span><strong id="ai-doctrine">ATTACK</strong><small id="ai-description">Build opportunistically, then hunt hostile forces.</small></div>
+          <div class="doctrine"><span>AI DOCTRINE · C / V · R-CLICK TAP: SQUAD ORDER</span><strong id="ai-doctrine">ATTACK</strong><small id="ai-description">Build opportunistically, then hunt hostile forces.</small></div>
         </section>
         <div id="crosshair" aria-hidden="true"><i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><b></b><u class="lock-ring"></u><span class="lock-label">LOCK-ON</span><u class="heal-ring"></u><span class="heal-cross"><em></em><em></em></span><span class="heal-label">SELECT HEAL TARGET</span></div>
         <div id="damage-numbers" aria-hidden="true"></div>
@@ -42,12 +42,12 @@
         <div id="turret-warning" class="turret-warning hidden" role="alert" aria-live="assertive"><strong>GET OUT!</strong><span>0.0s</span><small>TURRET CORE CRITICAL</small></div>
         <div class="bottom-strip">
           <section class="vitals panel"><span class="portrait">D</span><div><label><span id="hp-title">HP</span> <b><span id="hp-label">100</span> <span id="shield-label" class="shield"></span></b></label><div class="bar hp"><i id="hp-fill"></i></div><label>MP <b id="mp-label">50</b></label><div class="bar mp"><i id="mp-fill"></i></div></div></section>
-          <section class="weapon panel"><span id="weapon-name">COMBAT PISTOL</span><strong id="ammo-label">∞</strong><small id="ability-label">Q · TACTICAL SPRINT</small></section>
+          <section class="weapon panel"><span id="weapon-name">COMBAT PISTOL</span><strong id="ammo-label">∞</strong><em id="weapon-ballistics">SPEED 63 · POWER 50</em><small id="ability-label">Q · TACTICAL SPRINT</small></section>
           <section class="builder panel"><span>D-BUILDER</span><div id="builder-cells" class="builder-cells"></div><small>E · STACK &nbsp; F · MATERIALIZE</small></section>
         </div>
       </div>
       <section id="domination-hud" class="domination-hud hidden" aria-label="Tower domination score">
-        <div class="domination-scoreboard"><span class="domination-kicker">TOWER DOMINATION</span><div id="domination-scores" class="domination-scores"></div></div>
+        <div class="domination-scoreboard"><span class="domination-kicker">TOWER DOMINION</span><div id="domination-scores" class="domination-scores"></div></div>
         <div id="domination-towers" class="domination-towers"></div>
       </section>
       <div id="domination-announcement" class="domination-announcement hidden" role="status"><span>TOWER AWAKENED</span><strong>TEAM CLAIMS SUN</strong><small>Point surge engaged.</small></div>
@@ -75,6 +75,11 @@
               <button class="active" data-obs-mode="free">FREELOOK</button>
               <button data-obs-mode="cinematic">AI DIRECTOR</button>
             </div>
+            <div id="obs-follow-controls" class="observer-cycle-controls hidden" role="group" aria-label="Follow camera target controls">
+              <button id="obs-prev-unit" type="button" aria-label="Observe previous unit"><kbd>Q</kbd><span>PREV</span></button>
+              <button id="obs-next-unit" type="button" aria-label="Observe next unit"><span>NEXT</span><kbd>E</kbd></button>
+              <button id="obs-next-team" type="button" aria-label="Observe next team"><span>NEXT TEAM</span><kbd>R</kbd></button>
+            </div>
           </div>
           <div class="observer-live"><span id="obs-clock">00:00</span><small>LIVE</small></div>
         </header>
@@ -85,9 +90,10 @@
           <div class="bet-slip"><label>WAGER <input id="obs-bet-amount" type="number" min="1" step="10" value="100"></label><button id="obs-bet-btn">PLACE BET</button></div>
           <div id="obs-bet-status" class="bet-status">SELECT A TEAM</div>
         </aside>
+        <aside id="observer-strength" class="observer-strength" aria-label="Living Destructos by team"></aside>
         <div id="observer-feature" class="observer-feature hidden"><span id="observer-feature-kicker">AI DIRECTOR</span><strong id="observer-feature-title">ENGAGEMENT DETECTED</strong><small id="observer-feature-subtitle"></small></div>
         <section class="observer-map-wrap"><div class="observer-map-label"><span>TACTICAL MAP</span><small>CLICK TO FLY / FOCUS</small></div><canvas id="observer-minimap" width="380" height="250" aria-label="Interactive observer tactical map"></canvas></section>
-        <div class="observer-instructions"><span id="obs-mode-label">FOLLOW CAM</span><small>DRAG ROTATE · WHEEL 8× ZOOM · 1–4 CAMERA MODES · [ / ] CYCLE PLAYERS</small></div>
+        <div class="observer-instructions"><span id="obs-mode-label">FREELOOK</span><small id="obs-control-guide">WASD MOVE · Q/E ALTITUDE · DRAG LOOK · WHEEL ZOOM · 1–4 CAMERA MODES</small></div>
       </div>
 
       <!-- Victory Screen Overlay -->

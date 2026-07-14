@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVE_SKILLS, CLASSES, COSMETICS, CRATE_TYPES, CRATE_WEAPON_CHANCE, DROPS, MISSIONS, PASSIVE_SKILLS, RECIPES, WEAPONS, buildWeaponVariant, crateCombinationProfile, destructoSpeedBonus, tankHpBonus, rollCrateType, rollCrateWeapon, rollDrop, scheduledCrateType } from '../src/data/gameData.js';
+import { ACTIVE_SKILLS, CLASSES, COSMETICS, CRATE_TYPES, CRATE_WEAPON_CHANCE, DROPS, MISSIONS, PASSIVE_SKILLS, RECIPES, WEAPONS, buildWeaponVariant, crateCombinationProfile, destructoSpeedBonus, tankHpBonus, rollCrateType, rollCrateWeapon, rollDrop, scheduledCrateType, shiftTeamAlliance, normalizeAllianceGroups, allianceSummary, MAX_ALLIANCES } from '../src/data/gameData.js';
+import { PROJECTILE_SPREAD_SCALE } from '../src/game/CombatSystem.js';
 
 describe('game data integrity', () => {
   it('defines all ten First Dimension classes with valid weapons and abilities', () => {
@@ -17,12 +18,13 @@ describe('game data integrity', () => {
     expect(CLASSES.scout.speed).toBeCloseTo(8.5 * 1.55);
     expect(CLASSES.medic.speed).toBeCloseTo(6.4 * 1.3);
     expect(CLASSES.heavy.speed).toBeCloseTo(4.7 * 1.3);
-    expect(WEAPONS.pistol.speed).toBe(63);
-    expect(WEAPONS.rocket.speed).toBe(26);
+    expect(WEAPONS.pistol.bulletSpeed).toBe(63);
+    expect(WEAPONS.rocket.bulletSpeed).toBe(26);
     expect(WEAPONS.pistol.spread).toBeCloseTo(.018 * .8);
     expect(WEAPONS.shotgun.pellets).toBe(12);
     expect(WEAPONS.machinegun.spread).toBeLessThan(.03);
     expect(WEAPONS.smg.spread).toBeLessThan(.04);
+    expect(PROJECTILE_SPREAD_SCALE).toBe(.7);
     expect(DROPS.some(drop => drop.id === 'grenades')).toBe(true);
   });
   it('gives every weapon a recoil value for shooter pushback', () => {
@@ -57,7 +59,7 @@ describe('game data integrity', () => {
   it('scales projectile speed and size with weapon combination strength', () => {
     const plain=buildWeaponVariant('rifle',[{crateType:CRATE_TYPES.brown}]);
     const crimson=buildWeaponVariant('rifle',[{crateType:CRATE_TYPES.red},{crateType:CRATE_TYPES.red}]);
-    expect(crimson.damage).toBeGreaterThan(plain.damage);expect(crimson.speed).toBeGreaterThan(plain.speed);expect(crimson.projectileScale).toBeGreaterThan(plain.projectileScale);expect(crimson.crimson).toBe(true);
+    expect(crimson.damage).toBeGreaterThan(plain.damage);expect(crimson.bulletSpeed).toBeGreaterThan(plain.bulletSpeed);expect(crimson.shotPower).toBeGreaterThan(plain.shotPower);expect(crimson.projectileScale).toBeGreaterThan(plain.projectileScale);expect(crimson.crimson).toBe(true);
   });
   it('applies exact colored-crate unit speed and tank HP bonuses', () => {
     const profile=id=>crateCombinationProfile([{crateType:CRATE_TYPES[id]}]);
@@ -95,5 +97,38 @@ describe('game data integrity', () => {
   });
   it('ships four distinct mission objectives including multiplayer skirmish', () => {
     expect(Object.keys(MISSIONS)).toHaveLength(4); expect(new Set(Object.values(MISSIONS).map(m => m.type))).toEqual(new Set(['skirmish', 'assault', 'capture', 'build']));
+  });
+});
+
+describe('alliance grouping for the team-oriented setup', () => {
+  const team = (group, name = 'T') => ({ name, colorIndex: 0, group, uniformIndex: 0, isHuman: false });
+  it('keeps alliance indices compact after normalization', () => {
+    const setup = [team(3), team(3), team(7)];
+    normalizeAllianceGroups(setup);
+    expect(setup.map(t => t.group)).toEqual([0, 0, 1]);
+  });
+  it('moves a team between neighbouring alliances', () => {
+    const setup = [team(0), team(0), team(1)];
+    shiftTeamAlliance(setup, 2, -1);
+    expect(setup.map(t => t.group)).toEqual([0, 0, 0]);
+    shiftTeamAlliance(setup, 1, 1); // past the end: founds a new alliance
+    expect(setup.map(t => t.group)).toEqual([0, 1, 0]);
+  });
+  it('cannot push a lone trailing team into an empty alliance or below zero', () => {
+    const setup = [team(0), team(1)];
+    shiftTeamAlliance(setup, 1, 1);
+    expect(setup.map(t => t.group)).toEqual([0, 1]);
+    shiftTeamAlliance(setup, 0, -1);
+    expect(setup.map(t => t.group)).toEqual([0, 1]);
+  });
+  it('caps the battlefield at MAX_ALLIANCES', () => {
+    const setup = Array.from({ length: 6 }, (_, i) => team(Math.min(i, MAX_ALLIANCES - 1)));
+    shiftTeamAlliance(setup, 5, 1); // groups 0..4 exist — a sixth alliance is refused
+    expect(new Set(setup.map(t => t.group)).size).toBeLessThanOrEqual(MAX_ALLIANCES);
+  });
+  it('summarizes the battle shape as XvYvZ', () => {
+    expect(allianceSummary([team(0), team(0), team(1), team(1)])).toBe('2v2');
+    expect(allianceSummary([team(0), team(1), team(2)])).toBe('1v1v1');
+    expect(allianceSummary([team(0), team(0), team(0), team(1)])).toBe('3v1');
   });
 });

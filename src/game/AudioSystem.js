@@ -15,7 +15,9 @@ const SOUND_PROFILES = {
   destructo_damaged: { group: 'voice', priority: 4 },
   destructo_damaged_running: { group: 'voice', priority: 4 },
   destructo_grunt: { group: 'voice', priority: 3 },
+  destructo_hit: { group: 'impact', priority: 2 },
   explosion: { group: 'explosion', priority: 4 },
+  tree_explode: { group: 'explosion', priority: 3 },
   pistol: { group: 'weapon', priority: 2 },
   machinegun: { group: 'weapon', priority: 2 },
   shotgun: { group: 'weapon', priority: 3 },
@@ -23,6 +25,8 @@ const SOUND_PROFILES = {
   grenade_launcher: { group: 'weapon', priority: 3 },
   turret: { group: 'weapon', priority: 2 },
   uzi: { group: 'weapon', priority: 2 },
+  ricochet: { group: 'impact', priority: 1 },
+  tree_hit: { group: 'impact', priority: 1 },
   step_rock: { group: 'movement', priority: 0 },
   step_dirt: { group: 'movement', priority: 0 },
   step_water: { group: 'movement', priority: 0 },
@@ -40,6 +44,8 @@ export class AudioSystem {
     this.activeVoices = [];
     this.nextVoiceSequence = 0;
     this.resumePromise = null;
+    this.musicMuted = false;
+    this.soundsMuted = false;
 
     const normalPanner = {
       panningModel: 'HRTF', refDistance: 35, rolloffFactor: 1,
@@ -64,19 +70,22 @@ export class AudioSystem {
       destructo_damaged: sound('destructo_damaged.wav'),
       destructo_damaged_running: sound('destructo_damaged2.wav'),
       destructo_grunt: variants(['destructo_grunt.wav', 'destructo_grunt2.wav']),
-      destructo_hit: sound('destructo_hit1.wav'),
+      destructo_hit: variants(['destructo_hit1.wav', 'destructo_hit2.wav', 'destructo_hit3.wav']),
       destructo_bloodsplash: sound('destructo_bloodsplash.wav'),
       defeat: sound('defeat.wav', {}),
       explosion: sound('grenade_explosion.wav', explosionPanner),
       grenade_launcher: sound('grenade_launcher.wav'),
       machinegun: sound('machinegun.wav'),
       metal_hit: variants(['metal_hit1.wav', 'metal_hit2.wav', 'metal_hit3.wav', 'metal_hit4.wav']),
-      pistol: sound('pistol.wav'),
+      pistol: variants(['pistol.wav', 'pistol1.wav']),
+      ricochet: variants(['ricochet1.wav', 'ricochet2.wav']),
       rock_hit: variants(['rock_hit1.wav', 'rock_hit2.wav']),
       shotgun: sound('shotgun.wav'),
       sniper: sound('sniper.wav'),
       structure_death: sound('structure_death.wav'),
       turret: variants(['turret1.wav', 'turret2.wav']),
+      tree_hit: variants(['tree_hit1.wav', 'tree_hit2.wav', 'tree_hit3.wav']),
+      tree_explode: sound('tree_explode.wav', explosionPanner),
       wood_hit: sound('wood_hit.wav'),
       uzi: sound('uzi.wav'),
       step_rock: variants(['step_rock.wav', 'step_rock2.wav']),
@@ -89,6 +98,7 @@ export class AudioSystem {
   }
 
   play(name, pos = null, rate = 1) {
+    if (this.soundsMuted) return;
     if (typeof pos === 'number') { rate = pos; pos = null; }
     const entry = this.sounds[name];
     if (!entry) return;
@@ -102,7 +112,8 @@ export class AudioSystem {
     if (['pistol', 'machinegun', 'shotgun', 'sniper', 'grenade_launcher', 'turret', 'uzi'].includes(name)) scale = .28;
     else if (['step_rock', 'step_dirt', 'step_water'].includes(name)) scale = .20;
     else if (['destructo_damaged', 'destructo_damaged_running', 'destructo_death', 'destructo_explosion_death', 'defeat'].includes(name)) scale = .38;
-    else if (name === 'explosion') scale = .45;
+    else if (['metal_hit', 'rock_hit', 'wood_hit', 'tree_hit', 'ricochet', 'destructo_hit', 'destructo_bloodsplash'].includes(name)) scale = .30;
+    else if (name === 'explosion' || name === 'tree_explode') scale = .45;
     else if (name === 'water_splash') scale = .32;
     else if (name === 'destructo_grunt') scale = .30;
 
@@ -183,7 +194,7 @@ export class AudioSystem {
     this.resumeAudioContext();
     if (this.currentMusicSrc === srcUrl) {
       if (this.currentMusic) {
-        this.currentMusic.volume(this.volumeSlider * .60);
+        this.currentMusic.volume(this.musicMuted ? 0 : this.volumeSlider * .60);
         if (!this.currentMusic.playing()) this.currentMusic.play();
       }
       return;
@@ -196,13 +207,16 @@ export class AudioSystem {
     this.currentMusicSrc = srcUrl;
     this.currentMusic = new Howl({ src: [srcUrl], loop, volume: 0, html5: true });
     this.currentMusic.play();
-    this.currentMusic.fade(0, this.volumeSlider * .60, 500);
+    this.currentMusic.fade(0, this.musicMuted ? 0 : this.volumeSlider * .60, 500);
   }
 
   setVolume(value) {
     this.volumeSlider = value;
-    if (this.currentMusic) this.currentMusic.volume(value * .60);
+    if (this.currentMusic) this.currentMusic.volume(this.musicMuted ? 0 : value * .60);
   }
+
+  setMusicMuted(muted) { this.musicMuted = Boolean(muted); if (this.currentMusic) this.currentMusic.volume(this.musicMuted ? 0 : this.volumeSlider * .60); return this.musicMuted; }
+  setSoundsMuted(muted) { this.soundsMuted = Boolean(muted); if (this.soundsMuted) for (const voice of [...this.activeVoices]) this.stopVoice(voice); return this.soundsMuted; }
 
   updateListener(camera) {
     if (!camera) return;

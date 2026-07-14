@@ -35,4 +35,12 @@ describe('LeagueSystem', () => {
     expect(delta).toBe(0);
     expect(a.wins).toBe(before + 1);
   });
+
+  it('keeps MMR and records isolated by game mode',()=>{
+    const league=new LeagueSystem([]),rival=league.profiles[0],deathmatchBefore=rival.mmr;
+    league.settle('cpu',null,[{id:'cpu',profile:rival}], 'domination');
+    expect(rival.mmr).toBe(deathmatchBefore);
+    expect(rival.modeRecords.domination.mmr).toBeGreaterThan(deathmatchBefore);
+    expect(league.leaderboard({modeRecords:{deathmatch:{mmr:900,wins:2,losses:3},domination:{mmr:1400,wins:7,losses:1}}},'domination').find(p=>p.player)).toMatchObject({mmr:1400,wins:7,losses:1});
+  });
 });

@@ -88,9 +88,9 @@ describe('AudioSystem voice management', () => {
 
     expect(audio.activeVoices).toHaveLength(24);
     expect(audio.activeVoices.length).toBeLessThanOrEqual(MAX_ACTIVE_SFX);
-    const pistol = audio.sounds.pistol;
-    expect(pistol.active.size).toBe(24);
-    expect(pistol.stopped).toHaveLength(976);
+    const pistols = audio.sounds.pistol;
+    expect(pistols.reduce((total, clip) => total + clip.active.size, 0)).toBe(24);
+    expect(pistols.reduce((total, clip) => total + clip.stopped.length, 0)).toBe(976);
   });
 
   it('keeps important sounds when a lower-priority sound arrives at the global limit', () => {
@@ -108,7 +108,7 @@ describe('AudioSystem voice management', () => {
   it('releases a voice on completion so later sounds can play', () => {
     const audio = new AudioSystem();
     const id = audio.play('pistol');
-    audio.sounds.pistol.emit('end', id);
+    audio.activeVoices[0].clip.emit('end', id);
 
     expect(audio.activeVoices).toHaveLength(0);
     expect(audio.play('pistol')).toBeTypeOf('number');
@@ -117,12 +117,23 @@ describe('AudioSystem voice management', () => {
 
   it('contains a single playback failure without poisoning the mixer', () => {
     const audio = new AudioSystem();
-    audio.sounds.pistol.throwOnPlay = true;
+    audio.sounds.pistol.forEach(clip => { clip.throwOnPlay = true; });
 
     expect(() => audio.play('pistol')).not.toThrow();
     expect(audio.activeVoices).toHaveLength(0);
-    audio.sounds.pistol.throwOnPlay = false;
+    audio.sounds.pistol.forEach(clip => { clip.throwOnPlay = false; });
     expect(audio.play('pistol')).toBeTypeOf('number');
+  });
+
+  it('registers every new pistol, ricochet, tree, and Destructo hit variant', () => {
+    const audio = new AudioSystem();
+    const sources = name => [audio.sounds[name]].flat().map(clip => clip.options.src[0]);
+
+    expect(sources('pistol')).toEqual(['/sounds/pistol.wav', '/sounds/pistol1.wav']);
+    expect(sources('ricochet')).toEqual(['/sounds/ricochet1.wav', '/sounds/ricochet2.wav']);
+    expect(sources('tree_hit')).toEqual(['/sounds/tree_hit1.wav', '/sounds/tree_hit2.wav', '/sounds/tree_hit3.wav']);
+    expect(sources('tree_explode')).toEqual(['/sounds/tree_explode.wav']);
+    expect(sources('destructo_hit')).toEqual(['/sounds/destructo_hit1.wav', '/sounds/destructo_hit2.wav', '/sounds/destructo_hit3.wav']);
   });
 
   it('asks a suspended audio context to resume', () => {
