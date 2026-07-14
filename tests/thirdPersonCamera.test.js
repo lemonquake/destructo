@@ -155,6 +155,15 @@ describe('mounted platform crosshair gunnery', () => {
     expect(turret.barrels[0].rotation.x).toBeLessThan(Math.PI / 2);
   });
 
+  it('does not let the previous hover point override fresh mouse movement', () => {
+    const turret = { type: 'turret', group: { position: new THREE.Vector3(), rotation: { y: 0 } }, aim: new THREE.Vector3(0, 0, 1), head: { rotation: { y: 0 } }, barrels: [] };
+    const game = turretGame({ dx: 10 });
+    game.hoverPoint = new THREE.Vector3(40, 0, 40);
+    Game.prototype.updateTurretAim.call(game, turret, 60, .016);
+    expect(turret.aim.x).toBeLessThan(0);
+    expect(turret.head.rotation.y).toBeLessThan(0);
+  });
+
   it('prioritizes the locked target over the crosshair point', () => {
     const turret = { type: 'turret', group: { position: new THREE.Vector3(), rotation: { y: 0 } }, aim: new THREE.Vector3(0, 0, 1), barrels: [] };
     const lock = { dead: false, group: { position: new THREE.Vector3(-30, 0, 0) } };

@@ -532,9 +532,10 @@ export class Game{
   // mounted-platform aim: the shoulder camera turns with the mouse and the gun
   // tracks whatever sits under the centered crosshair (or the locked target)
   updateTurretAim(platform,range=60,dt=.016){this.ballisticOutOfRange=false;const sensitivity=.0022*(this.save?.data?.settings?.mouseSensitivity??1);
+    const mouseMoved=Boolean(this.input.mouse.dx||this.input.mouse.dy),mobileMoved=Boolean(this.input.mobile&&this.input.aimAxis&&(this.input.aimAxis.x||this.input.aimAxis.y));
     this.fpsYaw=(this.fpsYaw??Math.atan2(platform.aim.x,platform.aim.z))-this.input.mouse.dx*sensitivity;
     this.fpsPitch=THREE.MathUtils.clamp((this.fpsPitch||0)-this.input.mouse.dy*sensitivity,THREE.MathUtils.degToRad(-38),THREE.MathUtils.degToRad(58));
-    if(this.input.mobile&&this.input.aimAxis&&(this.input.aimAxis.x||this.input.aimAxis.y)){
+    if(mobileMoved){
       this.fpsYaw-=this.input.aimAxis.x*dt*2.4;
       this.fpsPitch=THREE.MathUtils.clamp(this.fpsPitch+this.input.aimAxis.y*dt*1.8,THREE.MathUtils.degToRad(-38),THREE.MathUtils.degToRad(58));
     }
@@ -543,7 +544,10 @@ export class Game{
     if(this.input.mouse.rightPressed){this.turretLockTarget=this.turretLockTarget?null:this.enemyNearCursor();if(this.turretLockTarget)this.hud.lockPulse()}
     let targetPoint;
     if(this.turretLockTarget)targetPoint=this.turretLockTarget.group.position.clone().add(new THREE.Vector3(0,1.1,0));
-    else if(this.hoverPoint)targetPoint=this.hoverPoint.clone();
+    // updateHover runs after player input, so its point belongs to the previous
+    // camera angle. While the view is moving, aim from the fresh mouse angles
+    // instead of letting that stale point pull the gun away from the reticle.
+    else if(this.hoverPoint&&!mouseMoved&&!mobileMoved)targetPoint=this.hoverPoint.clone();
     else targetPoint=origin.clone().add(new THREE.Vector3(Math.sin(this.fpsYaw)*Math.cos(this.fpsPitch),Math.sin(this.fpsPitch),Math.cos(this.fpsYaw)*Math.cos(this.fpsPitch)).multiplyScalar(range));
     const solved=this.turretLockTarget?this.combat.ballisticDirectionFor?.(platform,this.turretLockTarget):this.combat.ballisticDirectionTo?.(platform,targetPoint),raw=solved||targetPoint.sub(origin);this.ballisticOutOfRange=!solved;if(raw.lengthSq()<.01)return;raw.normalize();const yaw=Math.atan2(raw.x,raw.z),pitch=THREE.MathUtils.clamp(Math.asin(raw.y),THREE.MathUtils.degToRad(-35),THREE.MathUtils.degToRad(55));platform.controlYaw=yaw;platform.controlPitch=pitch;platform.aim.set(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)).normalize();platform.aimPitch=pitch;if(platform.head)platform.head.rotation.y=platform.type==='vehicle'?yaw-platform.group.rotation.y:yaw;for(const barrel of platform.barrels||[])barrel.rotation.x=Math.PI/2-pitch;if(platform===this.player)this.player.group.rotation.y=yaw}
   updateMotorcycles(dt){
