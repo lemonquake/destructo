@@ -131,7 +131,7 @@ export class Game{
   teamCosmetics(){const eq=this.save.data.equipped;return{hat:eq.hat||undefined,skin:eq.skin||undefined}}
   // ── alliance helpers ────────────────────────────────────────────────────────
   hostile(a,b){const A=this.teamMap?.[a],B=this.teamMap?.[b];if(!A||!B)return a!==b;return A.group!==B.group}
-  livingUnits(teamId){return this.combatants.filter(e=>e.team===teamId&&e.type==='unit'&&!e.dead)}
+  livingUnits(teamId){return this.combatants.filter(e=>e.team===teamId&&e.type==='unit'&&!e.dead&&!e.decoy)}
   friendsOf(u){return this.combatants.filter(e=>!e.dead&&e.team&&!this.hostile(u.team,e.team))}
   foesOf(u){return this.combatants.filter(e=>!e.dead&&e.team&&this.hostile(u.team,e.team))}
   respawnPos(teamId,i=0){const b=this.world.basePositions[teamId],pad=this.world.spawnPositions?.[teamId]||this.world.builderPositions[teamId]||b;const dir=b.clone().multiplyScalar(-1).setY(0).normalize(),side=new THREE.Vector3(-dir.z,0,dir.x);const p=pad.clone().addScaledVector(dir,3).addScaledVector(side,((i%3)-1)*2.4).addScaledVector(dir,Math.floor(i/3)*2.4);p.y=this.world.groundAt(p);return p}
@@ -310,7 +310,7 @@ export class Game{
   updateTeams(dt){
     for(const t of this.teams){
       if(t.eliminated)continue;
-      const factory=this.world.factories[t.id],units=this.livingUnits(t.id),anyAlive=this.combatants.some(e=>e.team===t.id&&!e.dead),canReinforce=this.gameMode==='domination'||(this.matchRules.reinforcements&&!factory.dead);
+      const factory=this.world.factories[t.id],units=this.livingUnits(t.id),canReinforce=this.gameMode==='domination'||(this.matchRules.reinforcements&&!factory.dead);
       if(units.length>0) {
         t.respawnTimer=this.matchRules.reinforcementSeconds;
         if(!this.observerOnly&&t.id===this.playerTeam) {
@@ -326,16 +326,17 @@ export class Game{
           this.hud.el.objective.textContent=`Squad wiped — reinforcement in ${Math.ceil(t.respawnTimer)}s`;
         }
         if(t.respawnTimer<=0){t.respawnTimer=this.matchRules.reinforcementSeconds;const unit=this.addUnit(this.gameMode==='domination'?DOMINATION_RULES.classId:pick(['scout','gunner','medic']),t.id,this.respawnPos(t.id,Math.floor(Math.random()*3)));this.particles.burst(unit.group.position.clone().add(new THREE.Vector3(0,1,0)),this.teamMap[t.id].color,26,7);if(!this.observerOnly&&t.id===this.playerTeam){this.possess(unit);document.getElementById('respawn-overlay').classList.add('hidden');this.hud.toast('REINFORCEMENT DEPLOYED');this.hud.el.objective.textContent=this.gameMode==='domination'?`Capture towers · first to ${this.matchRules.maxScore}`:this.mission.objective}}}
-      if(this.gameMode!=='domination'&&!canReinforce&&!anyAlive){
+      if(this.gameMode!=='domination'&&!canReinforce&&units.length===0){
         if(t.id===this.playerTeam && this.state==='mission'){
           t.eliminated=true;
-          document.getElementById('respawn-overlay').classList.add('hidden');
+          document.getElementById('respawn-overlay')?.classList.add('hidden');
           this.hud.toast('SQUAD ELIMINATED — ENTERING OBSERVER MODE',true);
           this.enterObserverMode();
         } else {
           t.eliminated=true;
           this.hud.toast(`${t.name.toUpperCase()} ELIMINATED`,t.id===this.playerTeam);
         }
+        continue;
       }
       // AI teams trickle reinforcements while their base stands
       const shouldTrickle=this.gameMode==='domination'||this.observerOnly||t.id!==this.playerTeam;if(shouldTrickle&&canReinforce){t.reinforceTimer-=dt;if(t.reinforceTimer<=0){t.reinforceTimer=this.gameMode==='domination'?this.matchRules.reinforcementSeconds:this.matchRules.reinforcementSeconds+Math.random()*4;const cap=this.gameMode==='domination'?DOMINATION_RULES.squadSize:this.matchRules.squadSize+2;if(this.livingUnits(t.id).length<cap)this.addUnit(this.gameMode==='domination'?DOMINATION_RULES.classId:(Math.random()>.5?'scout':'gunner'),t.id,this.respawnPos(t.id,Math.floor(Math.random()*3)))}}
@@ -1160,7 +1161,7 @@ export class Game{
   recordStat(teamId,statName,amount=1){if(this.teamStats&&this.teamStats[teamId]){this.teamStats[teamId][statName]=(this.teamStats[teamId][statName]||0)+amount;}}
   recordDestructoCreated(unit){const stats=this.teamStats?.[unit?.team];if(!stats||unit.type!=='unit')return;const id=unit.classId||'unknown';stats.destructosCreated[id]=(stats.destructosCreated[id]||0)+1}
   healUnit(target,amount,healer=target){if(!target||target.dead||!Number.isFinite(target.maxHp))return 0;const before=target.hp;target.hp=Math.min(target.maxHp,target.hp+amount);const healed=Math.max(0,target.hp-before);if(healed&&healer?.team)this.recordStat(healer.team,'healing',healed);return healed}
-  enterObserverMode(){this.hud.show(false);this.endRuntime();document.exitPointerLock?.();this.input.enabled=true;this.state='observer';document.getElementById('observer-panel').classList.remove('hidden');document.body.classList.add('observing');if(this.gameMode==='domination')this.configureModeHud();this.obsZoom=1;this.obsRotation=0;this.obsPitch=.65;this.observerMode='free';this.directorTimer=0;this.freeLookPosition=this.camera.position.clone();this.freeLookYaw=0;this.freeLookPitch=-.35;this.observerTarget=this.combatants.find(u=>u.type==='unit'&&!u.dead)||null;this.directorCutDelay=0;this.pendingCutTarget=null;this.pendingCutAngle=null;this.pendingCutFeature=null;this.wasInBattle=false;this.transparentCrate=null;this._observerUiAccumulator=0;this._observerMapAccumulator=0;this.initObserverUI();this.setObserverMode(this.observerMode);this.updateObserverUI()}
+  enterObserverMode(){if(this.state==='observer')return;this.endRuntime();document.exitPointerLock?.();this.input.mouse.down=false;this.input.enabled=true;this.state='observer';document.getElementById('respawn-overlay')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.remove('hidden');document.body.classList.add('observing');if(this.gameMode==='domination')this.configureModeHud();this.obsZoom=1;this.obsRotation=0;this.obsPitch=.65;this.observerMode='free';this.directorTimer=0;this.freeLookPosition=this.camera.position.clone();this.freeLookYaw=0;this.freeLookPitch=-.35;this.observerTarget=this.observerUnits()[0]||null;this.directorTarget=this.observerTarget;this.directorCutDelay=0;this.pendingCutTarget=null;this.pendingCutAngle=null;this.pendingCutFeature=null;this.wasInBattle=false;this.transparentCrate=null;this.cameraScout=null;this.lockTarget=null;this.turretLockTarget=null;this._observerUiAccumulator=0;this._observerMapAccumulator=0;this._observerStrengthKey=null;this.initObserverUI();this.setObserverMode(this.observerMode);this.updateObserverUI()}
   initObserverUI(){
     const teamSelect=document.getElementById('obs-team-select');const unitSelect=document.getElementById('obs-unit-select');
     this.selectedBetTeam=null;const amount=document.getElementById('obs-bet-amount'),button=document.getElementById('obs-bet-btn');amount.disabled=false;button.disabled=false;document.getElementById('obs-bet-status').textContent='SELECT A TEAM';
@@ -1182,6 +1183,7 @@ export class Game{
     if(units.length>0){const safe=(index+units.length)%units.length;this.observerTarget=units[safe];unitSelect.value=String(safe);}else{this.observerTarget=null;}
   }
   observerTeams(){return (this.teams||[]).filter(team=>!team.eliminated&&this.livingUnits(team.id).length>0)}
+  observerUnits(){return this.observerTeams().flatMap(team=>this.livingUnits(team.id))}
   syncObserverSelection(){const target=this.observerTarget;if(!target)return;const team=document.getElementById('obs-team-select'),unit=document.getElementById('obs-unit-select');if(team&&team.value!==target.team){team.value=target.team;this.observeTeam(target.team,Math.max(0,this.livingUnits(target.team).indexOf(target)));return}if(unit)unit.value=String(Math.max(0,this.livingUnits(target.team).indexOf(target)))}
   cycleObserverUnit(delta){if(this.observerMode!=='follow')return;const teamId=this.observerTarget?.team||document.getElementById('obs-team-select')?.value,units=this.livingUnits(teamId);if(!units.length){this.cycleObserverTeam(delta>=0?1:-1);return}const current=Math.max(0,units.indexOf(this.observerTarget)),next=(current+delta+units.length)%units.length;this.observerTarget=units[next];this.syncObserverSelection()}
   cycleObserverTeam(delta=1){if(this.observerMode!=='follow')return;const teams=this.observerTeams();if(!teams.length){this.observerTarget=null;return}const currentId=this.observerTarget?.team||document.getElementById('obs-team-select')?.value,current=Math.max(0,teams.findIndex(t=>t.id===currentId)),next=teams[(current+delta+teams.length)%teams.length];const select=document.getElementById('obs-team-select');if(select)select.value=next.id;this.observeTeam(next.id,0)}
@@ -1204,8 +1206,8 @@ export class Game{
   updateObserverStrength(){const root=document.getElementById('observer-strength');if(!root||!this.factory)return;const signature=this.teams.map(t=>`${t.id}:${this.livingUnits(t.id).map(u=>u.id).join(',')}`).join('|');if(signature===this._observerStrengthKey)return;this._observerStrengthKey=signature;root.innerHTML=this.teams.map(team=>{const units=this.livingUnits(team.id),icons=units.map(unit=>`<img src="${this.factory.unitPortrait(unit)}" alt="${escapeHtml(unit.classDef?.name||'Destructo')}" title="${escapeHtml(unit.classDef?.name||'Destructo')}">`).join('')||'<span class="empty">ELIMINATED</span>';return`<div class="obs-strength-team" style="--team:${hex(team.color)}"><strong>${escapeHtml(team.name)} · ${units.length}</strong><div class="obs-heads">${icons}</div></div>`}).join('')}
   resetObserverCamera(){this.obsZoom=1;this.obsRotation=0;this.obsPitch=.65;this.camera.up?.set?.(0,1,0);this.camera.quaternion?.identity?.();const focus=this.observerTarget?.group?.position||new THREE.Vector3();this.camera.position.copy(focus).add(new THREE.Vector3(0,21,20));this.camera.lookAt(focus.clone().add(new THREE.Vector3(0,1.2,0)));if(this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}}
   setObserverMode(mode){if(!['follow','pov','free','cinematic'].includes(mode))return;this.resetObserverCamera();this.observerMode=mode;this.directorCutDelay=0;this.pendingCutTarget=null;this.pendingCutAngle=null;this.pendingCutFeature=null;this.wasInBattle=false;if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}if(mode==='free'){this.freeLookPosition=this.camera.position.clone();const d=new THREE.Vector3();this.camera.getWorldDirection(d);this.freeLookYaw=Math.atan2(d.x,d.z);this.freeLookPitch=Math.asin(THREE.MathUtils.clamp(d.y,-1,1))}if(mode==='cinematic')this.directorTimer=0;const fov=mode==='pov'?72:48;if(this.camera.fov!==fov){this.camera.fov=fov;this.camera.updateProjectionMatrix()}document.querySelectorAll('[data-obs-mode]').forEach(b=>b.classList.toggle('active',b.dataset.obsMode===mode));document.getElementById('obs-follow-controls')?.classList.toggle('hidden',mode!=='follow');const label=document.getElementById('obs-mode-label'),guide=document.getElementById('obs-control-guide');if(label)label.textContent=mode==='pov'?'PLAYER POV':mode==='free'?'FREELOOK':mode==='cinematic'?'AI DIRECTOR':'FOLLOW CAM';if(guide)guide.textContent=mode==='follow'?'Q PREV UNIT · E NEXT UNIT · R NEXT TEAM · [ / ] UNIT ALIASES · DRAG ROTATE':mode==='free'?'WASD MOVE · Q/E ALTITUDE · DRAG LOOK · WHEEL ZOOM · 1–4 CAMERA MODES':mode==='pov'?'TARGET LOCKED · WHEEL FOV · 1–4 CAMERA MODES':'AUTOMATIC BATTLE CUTS · 1–4 CAMERA MODES';this.updateObserverUI()}
-  cycleObserverTarget(delta){const units=this.combatants.filter(u=>u.type==='unit'&&!u.dead);if(!units.length)return;const i=Math.max(0,units.indexOf(this.observerTarget));const next=units[(i+delta+units.length)%units.length];this.observerTarget=next;this.syncObserverSelection()}
-  observerMapCommand(point){if(this.state!=='observer')return;const pos=new THREE.Vector3(point.x,this.world.heightAt(point.x,point.z)+24,point.z+12);if(this.observerMode==='free'){this.freeLookPosition=pos;return}let best=null,d=Infinity;for(const u of this.combatants){if(u.dead||u.type!=='unit')continue;const n=(u.group.position.x-point.x)**2+(u.group.position.z-point.z)**2;if(n<d){d=n;best=u}}if(best&&d<225){this.observerTarget=best;if(this.observerMode!=='pov')this.setObserverMode('follow')}else{this.freeLookPosition=pos;this.setObserverMode('free')}}
+  cycleObserverTarget(delta){const units=this.observerUnits();if(!units.length){this.observerTarget=null;return}const i=Math.max(0,units.indexOf(this.observerTarget));const next=units[(i+delta+units.length)%units.length];this.observerTarget=next;this.syncObserverSelection()}
+  observerMapCommand(point){if(this.state!=='observer')return;const pos=new THREE.Vector3(point.x,this.world.heightAt(point.x,point.z)+24,point.z+12);if(this.observerMode==='free'){this.freeLookPosition=pos;return}let best=null,d=Infinity;for(const u of this.observerUnits()){const n=(u.group.position.x-point.x)**2+(u.group.position.z-point.z)**2;if(n<d){d=n;best=u}}if(best&&d<225){this.observerTarget=best;if(this.observerMode!=='pov')this.setObserverMode('follow')}else{this.freeLookPosition=pos;this.setObserverMode('free')}}
   updateObserverCamera(dt){
     let targetCrate=null;
     if(this.observerMode==='pov'&&this.observerTarget&&!this.observerTarget.dead&&this.observerTarget.carriedCrate){
@@ -1365,8 +1367,7 @@ export class Game{
       if(this.directorTimer<=0&&this.directorCutDelay<=0){
         this.directorTimer=3.5+Math.random()*2;
         let best=null,score=-Infinity;
-        for(const u of this.combatants){
-          if(u.dead||u.type!=='unit')continue;
+        for(const u of this.observerUnits()){
           const nearby=this.combatants.filter(v=>!v.dead&&this.hostile(u.team,v.team)&&v.group.position.distanceTo(u.group.position)<18).length;
           const s=nearby*40+(u.kills||0)*12+(1-u.hp/u.maxHp)*18+Math.random()*15;
           if(s>score){
