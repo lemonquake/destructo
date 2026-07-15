@@ -10,6 +10,36 @@ const GEO = {
 
 function mesh(geometry, material, shadows = true) { const m = new THREE.Mesh(geometry, material); m.castShadow = shadows; m.receiveShadow = shadows; return m; }
 
+function equippedCrateDesign(typeId) {
+  try {
+    const data = JSON.parse(localStorage.getItem('destructo-save-v1') || '{}');
+    const owned = new Set(data.cosmetics || []), equipped = data.equipped || {};
+    const textureId = equipped.crateTextures?.[typeId], modelId = equipped.crateModel;
+    const textureItem = owned.has(textureId) ? MARKETPLACE_COSMETICS.find(item => item.id === textureId && item.kind === 'crateTexture') : null;
+    const modelItem = owned.has(modelId) ? MARKETPLACE_COSMETICS.find(item => item.id === modelId && item.kind === 'crateModel') : null;
+    return { texture: textureItem?.visual?.texture || 'standard', model: modelItem?.visual?.model || 'standard' };
+  } catch { return { texture: 'standard', model: 'standard' }; }
+}
+
+function crateBodyGeometry(modelId) {
+  if (modelId === 'bulwark') return new THREE.BoxGeometry(1.34, 1, 1.16);
+  if (modelId === 'reactor') return new THREE.CylinderGeometry(.68, .74, 1.15, 8);
+  if (modelId === 'capsule') return new THREE.CapsuleGeometry(.57, .28, 5, 10);
+  return GEO.crate;
+}
+
+function addCrateBands(visual, material, modelId) {
+  const bands = [];
+  if (modelId === 'reactor' || modelId === 'capsule') {
+    for (const y of [-.34, .34]) { const band=mesh(new THREE.TorusGeometry(modelId === 'reactor' ? .7 : .58,.055,6,modelId === 'reactor' ? 8 : 14),material);band.rotation.x=Math.PI/2;band.position.y=y;visual.add(band);bands.push(band); }
+    const spine=mesh(new THREE.BoxGeometry(.11,1.1,.11),material);spine.position.z=modelId === 'reactor' ? .69 : .56;visual.add(spine);bands.push(spine);
+    return bands;
+  }
+  for (let i = 0; i < 3; i++) { const band = mesh(new THREE.BoxGeometry(i === 0 ? (modelId === 'bulwark' ? 1.38 : 1.2) : .12, .08, i === 0 ? .12 : (modelId === 'bulwark' ? 1.2 : 1.2)), material); band.position.set(i === 1 ? -.38 : i === 2 ? .38 : 0, modelId === 'bulwark' ? .51 : .58, 0); visual.add(band); bands.push(band); }
+  if (modelId === 'bulwark') for (const x of [-.62,.62]) for (const z of [-.52,.52]) { const guard=mesh(new THREE.BoxGeometry(.11,1.04,.11),material);guard.position.set(x,0,z);visual.add(guard);bands.push(guard); }
+  return bands;
+}
+
 export class EntityFactory {
   constructor(scene, materials) { this.scene = scene; this.materials = materials; this.teams = {}; }
   auraTexture() {
@@ -191,51 +221,24 @@ export class EntityFactory {
   createCrate(position, type = CRATE_TYPES.brown) {
     if (type === true) type = CRATE_TYPES.blue; // legacy "charged" flag
     if (typeof type === 'string') type = CRATE_TYPES[type] || CRATE_TYPES.brown;
-    const mat = this.materials.crate(type.id);
+    const design = equippedCrateDesign(type.id);
+    const mat = this.materials.crate(type.id, design.texture);
     const group = new THREE.Group(); group.position.copy(position);
     // Keep the gameplay root at ground level while the visible body tumbles about
     // its actual center of mass. This avoids the old corner-pivoted rotation.
     const visual = new THREE.Group(); visual.position.y = .575; group.add(visual);
-    const box = mesh(GEO.crate, mat); visual.add(box);
+    const box = mesh(crateBodyGeometry(design.model), mat); box.name = 'crate-body'; visual.add(box);
     const bandMat = this.materials.color(type.band);
-    const bands = [];
-    for (let i = 0; i < 3; i++) { const band = mesh(new THREE.BoxGeometry(i === 0 ? 1.2 : .12, .08, i === 0 ? .12 : 1.2), bandMat); band.position.set(i === 1 ? -.38 : i === 2 ? .38 : 0, .58, 0); visual.add(band); bands.push(band); }
-    if (type.tier >= 2) { const gem = mesh(new THREE.OctahedronGeometry(.2, 0), this.materials.color(0xffffff, { emissive: type.color, emissiveIntensity: 1.6 }), false); gem.position.y = .84; visual.add(gem); }
+    const bands = addCrateBands(visual, bandMat, design.model);
+    if (type.tier >= 2) { const gem = mesh(new THREE.OctahedronGeometry(.2, 0), this.materials.color(0xffffff, { emissive: type.color, emissiveIntensity: 1.6 }), false); gem.name='crate-gem';gem.position.y = design.model === 'capsule' ? .72 : .84; visual.add(gem); }
 
-    let customColors = null;
-    try {
-      const raw = localStorage.getItem('destructo-save-v1');
-      if (raw) {
-        const data = JSON.parse(raw);
-        customColors = data.equipped?.customCrate || data.customCrate;
-      }
-    } catch(e) {}
-    if (customColors) {
-      if (box && box.material) {
-        box.material = box.material.clone();
-        box.material.color = new THREE.Color(customColors.bodyColor || '#ff0000');
-      }
-      if (bands && bands.length > 0) {
-        bands.forEach(band => {
-          if (band.material) {
-            band.material = band.material.clone();
-            band.material.color = new THREE.Color(customColors.bandColor || '#00ff00');
-          }
-        });
-      }
-      const gem = visual.children.find(c => c.geometry instanceof THREE.OctahedronGeometry);
-      if (gem && gem.material) {
-        gem.material = gem.material.clone();
-        gem.material.color = new THREE.Color(customColors.gemColor || '#0000ff');
-      }
-    }
-
-    const entity = { id: crypto.randomUUID(), type: 'crate', crateType: type, originalType: type, charged: type.tier >= 2, group, visual, box, bands, position: group.position, radius: .72, halfExtent: .575, mass: type.mass || 1, velocity: new THREE.Vector3(), angularVelocity: new THREE.Vector3(), carried: false, placed: false, solid: false, falling: false, physicsActive: false, grounded: true };
+    const entity = { id: crypto.randomUUID(), type: 'crate', crateType: type, originalType: type, charged: type.tier >= 2, crateTextureDesigns: { [type.id]: design.texture }, crateModelDesign: design.model, group, visual, box, bands, position: group.position, radius: .72, halfExtent: .575, mass: type.mass || 1, velocity: new THREE.Vector3(), angularVelocity: new THREE.Vector3(), carried: false, placed: false, solid: false, falling: false, physicsActive: false, grounded: true };
     group.userData.entity = entity; group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); this.scene.add(group); return entity;
   }
   applyCrateType(crate, type) {
     crate.crateType = type; crate.mass = type.mass || 1; crate.charged = type.tier >= 2;
-    const mat = this.materials.crate(type.id);
+    const design = equippedCrateDesign(type.id);crate.crateTextureDesigns ||= {};crate.crateTextureDesigns[type.id]=design.texture;
+    const mat = this.materials.crate(type.id, design.texture);
     if (crate.box) crate.box.material = mat;
     for (const band of crate.bands || []) band.material = this.materials.color(type.band, type.tier >= 2 ? { emissive: type.color, emissiveIntensity: .35 } : {});
   }

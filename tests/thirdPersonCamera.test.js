@@ -53,6 +53,28 @@ describe('third-person shoulder aim', () => {
     expect(player.aim.x).toBeLessThan(-.9);
   });
 
+  it('bounds near-field shoulder parallax so a close hit cannot whip the aim sideways', () => {
+    const player = soldier();
+    // This is on the camera ray, but only one metre beyond the muzzle. Direct
+    // convergence would turn the weapon roughly 40 degrees to the left.
+    const game = aimGame(player, {}, { hoverPoint: new THREE.Vector3(-.85, 2.05, 1) });
+    Game.prototype.updateAim.call(game, .016);
+    expect(player.aim.z).toBeGreaterThan(.97);
+    expect(player.aim.x).toBeGreaterThan(-.2);
+  });
+
+  it('does not reuse a throttled hover sample after the camera angle changes', () => {
+    const player = soldier();
+    const game = aimGame(player, {}, {
+      hoverPoint: new THREE.Vector3(-20, 1.35, 0),
+      _hoverViewYaw: .08,
+      _hoverViewPitch: 0,
+    });
+    Game.prototype.updateAim.call(game, .016);
+    expect(player.aim.z).toBeGreaterThan(.99);
+    expect(Math.abs(player.aim.x)).toBeLessThan(.03);
+  });
+
   it('locks onto the hovered enemy with right-click and snaps the aim to it', () => {
     const player = soldier();
     const enemy = { type: 'unit', dead: false, team: 'red', group: { position: new THREE.Vector3(15, 0, 0) } };
@@ -172,6 +194,15 @@ describe('mounted platform crosshair gunnery', () => {
     game.hoverPoint = new THREE.Vector3(40, 0, 40);
     Game.prototype.updateTurretAim.call(game, turret, 60, .016);
     expect(turret.aim.x).toBeLessThan(0);
+  });
+
+  it('bounds close crosshair convergence for mounted guns too', () => {
+    const turret = { type: 'turret', group: { position: new THREE.Vector3(), rotation: { y: 0 } }, aim: new THREE.Vector3(0, 0, 1), head: { rotation: { y: 0 } }, barrels: [] };
+    const game = turretGame();
+    game.hoverPoint = new THREE.Vector3(-1.05, 3.55, 1);
+    Game.prototype.updateTurretAim.call(game, turret, 60, .016);
+    expect(turret.aim.z).toBeGreaterThan(.97);
+    expect(turret.aim.x).toBeGreaterThan(-.2);
   });
 });
 

@@ -189,6 +189,43 @@ const BUILDING_PAINTERS = {
   },
 };
 
+// Purchasable crate textures are deterministic overlays. They never accept a
+// player color: the underlying brown/yellow/blue/red rarity painter remains the
+// source of the crate's palette and silhouette-readable gameplay color.
+const CRATE_DESIGN_OVERLAYS = Object.freeze({
+  scrapline(ctx, r) {
+    ctx.save(); ctx.globalAlpha = .42; ctx.strokeStyle = '#e8edf2'; ctx.lineWidth = 3;
+    for (let y = 26; y < 128; y += 25) { ctx.beginPath(); ctx.moveTo(15, y); ctx.lineTo(113, y + (r() - .5) * 5); ctx.stroke(); }
+    ctx.fillStyle = '#202630';
+    for (const [x,y] of [[24,24],[104,24],[24,104],[104,104]]) { ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2); ctx.fill(); }
+    ctx.restore();
+  },
+  hazardGrid(ctx) {
+    ctx.save(); ctx.globalAlpha = .48; ctx.strokeStyle = '#151a22'; ctx.lineWidth = 5;
+    for (let x = -96; x < 224; x += 32) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x+128,128); ctx.stroke(); }
+    ctx.globalAlpha = .65; ctx.strokeStyle = '#f3f6f8'; ctx.lineWidth = 2; ctx.strokeRect(25,25,78,78); ctx.restore();
+  },
+  reactorTrace(ctx, r) {
+    ctx.save(); ctx.globalAlpha = .68; ctx.strokeStyle = '#d9fbff'; ctx.lineWidth = 2;
+    for (let i=0;i<8;i++) { let x=16+r()*96,y=16+r()*96;ctx.beginPath();ctx.moveTo(x,y);for(let n=0;n<3;n++){r()>.5?x+=r()>.5?16:-16:y+=r()>.5?16:-16;ctx.lineTo(x,y)}ctx.stroke();ctx.fillStyle='#ffffff';ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill(); }
+    ctx.restore();
+  },
+  rivetCamo(ctx, r) {
+    ctx.save(); ctx.globalAlpha = .32; ctx.fillStyle = '#10151d';
+    for (let i=0;i<18;i++){const x=r()*128,y=r()*128,w=18+r()*28;ctx.save();ctx.translate(x,y);ctx.rotate((r()-.5)*1.4);ctx.fillRect(-w/2,-6,w,12);ctx.restore()}
+    ctx.globalAlpha=.7;ctx.fillStyle='#f5f7f8';for(let y=12;y<128;y+=26)for(let x=12;x<128;x+=26){ctx.beginPath();ctx.arc(x,y,2,0,Math.PI*2);ctx.fill()}ctx.restore();
+  },
+});
+
+function paintCrateDesignTexture(typeId, designId) {
+  const [canvas, ctx] = makeCanvas();
+  const base = BUILDING_PAINTERS[`crate_${typeId}`] || BUILDING_PAINTERS.crate_brown;
+  const seed = `${typeId}:${designId}`;
+  base(ctx, seededRandom(seed.length * 7919 + seed.charCodeAt(0) * 131));
+  CRATE_DESIGN_OVERLAYS[designId]?.(ctx, seededRandom(seed.length * 3571 + seed.charCodeAt(seed.length - 1) * 97));
+  return toTexture(canvas);
+}
+
 // ── 10 destructo skin textures (wrapped around unit bodies) ──────────────────
 const SKIN_PAINTERS = {
   camo(ctx, r) { ctx.fillStyle = '#5d7a44'; ctx.fillRect(0, 0, 128, 128); for (let i = 0; i < 40; i++) { ctx.fillStyle = ['#3f5c30', '#82a05e', '#2e4424'][Math.floor(r() * 3)]; ctx.beginPath(); ctx.ellipse(r() * 128, r() * 128, 8 + r() * 16, 6 + r() * 10, r() * 3, 0, 7); ctx.fill(); } },
@@ -294,8 +331,10 @@ export class MaterialLibrary {
     if (repeat !== 1) { mat.map = map.clone(); mat.map.needsUpdate = true; mat.map.repeat.set(repeat, repeat); }
     this.dynamicMaterials.push(mat); return mat;
   }
-  crate(typeId) {
-    const map = this.textures[`crate_${typeId}`] || this.textures.stone;
+  crate(typeId, designId = 'standard') {
+    const textureKey = designId === 'standard' ? `crate_${typeId}` : `crate_${typeId}_${designId}`;
+    if (!this.textures[textureKey] && CRATE_DESIGN_OVERLAYS[designId]) this.textures[textureKey] = paintCrateDesignTexture(typeId, designId);
+    const map = this.textures[textureKey] || this.textures[`crate_${typeId}`] || this.textures.stone;
     const isRareOrLegendary = typeId === 'blue' || typeId === 'red';
     const mat = new THREE.MeshStandardMaterial({
       map,

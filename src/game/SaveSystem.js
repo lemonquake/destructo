@@ -2,7 +2,8 @@ import { SETTINGS_DEFAULTS } from '../data/gameData.js';
 
 const KEY = 'destructo-save-v1';
 const defaultModeRecord = () => ({ mmr: 1000, wins: 0, losses: 0 });
-const DEFAULT_SAVE = { chips: 750, tickets: 0, processedPayPalOrders: [], favoriteCosmetics: [], missionsWon: 0, totalKills: 0, mmr: 1000, rankedWins: 0, rankedLosses: 0, debugMode: false, modeRecords: { deathmatch: defaultModeRecord(), domination: defaultModeRecord() }, campaign: { completedMissionIds: [] }, aiProfiles: [], betHistory: [], blueprints: ['pistol', 'scout'], gear: [], upgrades: {}, cosmetics: [], customCrate: null, equipped: { hat: null, skin: null, boots: null, attachment: null, projectile: null, deathEffect: null, killEffect: null, customCrate: null, teamBase: null }, settings: SETTINGS_DEFAULTS };
+const DEFAULT_CRATE_TEXTURES = Object.freeze({ brown: null, yellow: null, blue: null, red: null });
+const DEFAULT_SAVE = { chips: 750, tickets: 0, processedPayPalOrders: [], favoriteCosmetics: [], missionsWon: 0, totalKills: 0, mmr: 1000, rankedWins: 0, rankedLosses: 0, debugMode: false, modeRecords: { deathmatch: defaultModeRecord(), domination: defaultModeRecord() }, campaign: { completedMissionIds: [] }, aiProfiles: [], betHistory: [], blueprints: ['pistol', 'scout'], gear: [], upgrades: {}, cosmetics: [], customCrate: null, equipped: { hat: null, skin: null, boots: null, attachment: null, projectile: null, deathEffect: null, killEffect: null, customCrate: null, crateTextures: DEFAULT_CRATE_TEXTURES, crateModel: null, teamBase: null }, settings: SETTINGS_DEFAULTS };
 
 export class SaveSystem {
   constructor() { this.data = this.load(); }
@@ -16,7 +17,12 @@ export class SaveSystem {
       loaded.tickets = loaded.tickets ?? 0;
       loaded.processedPayPalOrders = [...new Set(loaded.processedPayPalOrders||[])].slice(-100);
       loaded.favoriteCosmetics = [...new Set(loaded.favoriteCosmetics||[])];
-      loaded.customCrate = loaded.customCrate ?? null;
+      // Legacy builds stored arbitrary body/band/gem colors here. Crate colors
+      // identify gameplay rarity now, so discard those values during migration.
+      loaded.customCrate = null;
+      loaded.equipped.customCrate = null;
+      loaded.equipped.crateTextures = { ...DEFAULT_CRATE_TEXTURES, ...(saved.equipped?.crateTextures || {}) };
+      loaded.equipped.crateModel = saved.equipped?.crateModel || null;
       return loaded;
     } catch { return structuredClone(DEFAULT_SAVE); }
   }
@@ -49,6 +55,13 @@ export class SaveSystem {
   }
   equipCosmetic(kind, id) {
     this.data.equipped[kind] = this.data.equipped[kind] === id ? null : id;
+    this.commit();
+    return true;
+  }
+  equipCrateTexture(rarity, id) {
+    if (!Object.hasOwn(DEFAULT_CRATE_TEXTURES, rarity)) return false;
+    this.data.equipped.crateTextures ||= { ...DEFAULT_CRATE_TEXTURES };
+    this.data.equipped.crateTextures[rarity] = id || null;
     this.commit();
     return true;
   }

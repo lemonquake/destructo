@@ -16,6 +16,7 @@ export const MARKET_CATEGORIES = Object.freeze([
   Object.freeze({ id: 'projectile', label: 'Projectiles', icon: '☄' }),
   Object.freeze({ id: 'deathEffect', label: 'Death FX', icon: '✹' }),
   Object.freeze({ id: 'killEffect', label: 'Elimination FX', icon: '☠' }),
+  Object.freeze({ id: 'crateDesign', label: 'Crates', icon: '▣' }),
   Object.freeze({ id: 'teamBase', label: 'Team Bases', icon: '⌂' }),
 ]);
 
@@ -91,6 +92,14 @@ export const MARKETPLACE_COSMETICS = Object.freeze([
   cosmetic('dimension-rip','killEffect','Dimension Rip',880,'legendary','Tears open a short-lived violet portal.',{model:'portal',primary:0x913cff,secondary:0x47e7ff}),
   cosmetic('one-in-million','killEffect','One in a Million',1000,'mythic','The rarest elimination celebration in Gaia.',{model:'jackpot',primary:0xffe337,secondary:0xff4f91},{promoOnly:true,effect:'Mythic jackpot shower.'}),
 
+  cosmetic('crate-scrapline','crateTexture','Scrapline Panels',450,'rare','Stamped salvage panels for any crate rarity. Original rarity colors stay locked.',{model:'crate',texture:'scrapline',primary:0xb07840,secondary:0x7a4e26},{category:'crateDesign'}),
+  cosmetic('crate-hazard-grid','crateTexture','Hazard Grid',720,'epic','Industrial warning geometry layered over each crate\'s fixed rarity color.',{model:'crate',texture:'hazardGrid',primary:0xffd23f,secondary:0x2c2e35},{category:'crateDesign'}),
+  cosmetic('crate-reactor-trace','crateTexture','Reactor Trace',320,'legendary','Luminous circuit paths that inherit Brown, Yellow, Blue, or Red rarity coloring.',{model:'crate',texture:'reactorTrace',primary:0x58c8ff,secondary:0xdff8ff},{category:'crateDesign'}),
+  cosmetic('crate-rivet-camo','crateTexture','Rivet Camo',540,'legendary','Angular field markings without disguising the crate\'s gameplay rarity.',{model:'crate',texture:'rivetCamo',primary:0xff4d5e,secondary:0xffd23f},{category:'crateDesign'}),
+  cosmetic('crate-bulwark-model','crateModel','Bulwark Strongbox',430,'legendary','A reinforced wide-body 3D crate model used across every rarity.',{model:'bulwark',primary:0x66717c,secondary:0xffd23f},{category:'crateDesign'}),
+  cosmetic('crate-reactor-model','crateModel','Reactor Pod',620,'legendary','An octagonal reactor-pod silhouette used across every crate rarity.',{model:'reactor',primary:0x263c52,secondary:0x47e7ff},{category:'crateDesign'}),
+  cosmetic('crate-capsule-model','crateModel','Airdrop Capsule',850,'mythic','A rounded orbital capsule model for all supply-crate rarities.',{model:'capsule',primary:0xe9edf2,secondary:0xff5062},{category:'crateDesign'}),
+
   cosmetic('citadel-base','teamBase','Citadel Base',240,'legendary','A fortified command citadel with cyan rails.',{model:'citadel',primary:0x394b61,secondary:0x47e7ff}),
   cosmetic('fortress-base','teamBase','Fortress Base',360,'legendary','Layered armor and a rotating command beacon.',{model:'fortress',primary:0x30394a,secondary:0xff5062}),
   cosmetic('gaia-sanctum','teamBase','Gaia Sanctum',820,'legendary','A living command shrine wrapped in luminous roots.',{model:'sanctum',primary:0x22543c,secondary:0x66ff9b}),
@@ -122,4 +131,3 @@ export function marketplacePrice(item, rotation = getMarketplaceRotation()) {
   const offer = [...rotation.drops, ...rotation.promos].find(entry => entry.item.id === item.id);
   return offer?.discount ? Math.max(1, Math.round(item.price * (1 - offer.discount / 100))) : item.price;
 }
-

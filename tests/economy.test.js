@@ -24,6 +24,8 @@ describe('economy system - tickets and gear', () => {
       deathEffect: null,
       killEffect: null,
       customCrate: null,
+      crateTextures: { brown: null, yellow: null, blue: null, red: null },
+      crateModel: null,
       teamBase: null
     });
   });
@@ -49,6 +51,8 @@ describe('economy system - tickets and gear', () => {
       deathEffect: null,
       killEffect: null,
       customCrate: null,
+      crateTextures: { brown: null, yellow: null, blue: null, red: null },
+      crateModel: null,
       teamBase: null
     });
   });

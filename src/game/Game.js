@@ -37,6 +37,22 @@ const DOMINATION_RULES = Object.freeze({ squadSize: 4, reinforcementSeconds: 3, 
 // heal tether: max wire length before the green wires snap, heal + drain rates
 const HEAL_RANGE = 11, HEAL_RATE = 14, HEAL_MP_DRAIN = 6, HEAL_WIRE_POINTS = 22;
 const GRAPPLE_RANGE = 54, GRAPPLE_LAUNCH_TIME = .36, GRAPPLE_PULL_TIME = 11 / 6;
+// A third-person camera and a muzzle cannot share the same origin. If the
+// camera ray hits something immediately in front of the player, converging the
+// muzzle on that exact point creates a large sideways angle from a tiny change
+// in hit distance. Keep that parallax bounded while preserving exact aim once
+// the target is comfortably in front of the weapon.
+const AIM_CONVERGENCE = Object.freeze({ firstPerson: 2.5, shoulder: 6, mounted: 7 });
+const HOVER_ANGLE_TOLERANCE = THREE.MathUtils.degToRad(.35);
+const wrappedAngleDelta=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+const stableCrosshairPoint=(game,origin,look,minForward)=>{
+  if(!game.hoverPoint)return null;
+  if(Number.isFinite(game._hoverViewYaw)&&Math.abs(wrappedAngleDelta(game.fpsYaw||0,game._hoverViewYaw))>HOVER_ANGLE_TOLERANCE)return null;
+  if(Number.isFinite(game._hoverViewPitch)&&Math.abs((game.fpsPitch||0)-game._hoverViewPitch)>HOVER_ANGLE_TOLERANCE)return null;
+  const point=game.hoverPoint.clone(),forward=point.clone().sub(origin).dot(look);
+  if(forward<minForward)point.addScaledVector(look,minForward-forward);
+  return point;
+};
 const DESTRUCTIBLE_SUPPLIES=Object.freeze({ammo:Object.freeze({id:'ammo',name:'Ammo Pack',color:0xffc44a}),health:Object.freeze({id:'health',name:'Health Pack',color:0x59e065})});
 export const DEBUG_CODE='bugde',DEBUG_AMMO=5000;
 export function rollDestructibleSupply(random=Math.random){const roll=random();return roll<.2?DESTRUCTIBLE_SUPPLIES.ammo:roll<.4?DESTRUCTIBLE_SUPPLIES.health:null;}
@@ -125,8 +141,8 @@ export class Game{
   submitDebugCode(value){const activated=this.activateDebugCode(value);this.codeMessage=activated?'DEBUG MODE ACTIVE':'INVALID CODE';if(this.state==='paused')this.showPauseMenu(true);else this.showSettings();return activated}
   showShop(){this.showDBuild()}
   // D-Build studio: buy + equip cosmetics for your team's Destructos
-  showDBuild(){
-    this.casino?.dispose();this.casino=null;this.marketplace?.dispose();this.endRuntime();this.state='dbuild';this.audio.playMusic('/music/main_theme.mp3');this.marketplace=new Marketplace({root:this.screen,save:this.save,audio:this.audio,onBuyTickets:()=>this.showBuyTicketsModal(),onBack:()=>{this.marketplace=null;this.showMenu()}});this.marketplace.open();return;
+  showDBuild(category='featured'){
+    this.casino?.dispose();this.casino=null;this.marketplace?.dispose();this.endRuntime();this.state='dbuild';this.audio.playMusic('/music/main_theme.mp3');this.marketplace=new Marketplace({root:this.screen,save:this.save,audio:this.audio,onBuyTickets:()=>this.showBuyTicketsModal(),onBack:()=>{this.marketplace=null;this.showMenu()}});this.marketplace.category=category;this.marketplace.open();return;
     this.state='dbuild';
     if (!this.dbuildTab) this.dbuildTab = 'hats';
     const owned=this.save.data.cosmetics,eq=this.save.data.equipped;
@@ -224,9 +240,7 @@ export class Game{
     });
   }
   showCrateBuilder() {
-    this.state = 'dbuild';
-    this.dbuildTab = 'customCrates';
-    this.showDBuild();
+    this.showDBuild('crateDesign');
   }
   showCasino(){
     this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.endRuntime();this.state='casino';this.audio.playMusic('/music/main_theme.mp3');this.casino=new Casino({root:this.screen,save:this.save,audio:this.audio,onBack:()=>{this.casino=null;this.showMenu()},onDBuilder:()=>{this.casino=null;this.showDBuild()}});this.casino.open();
@@ -833,8 +847,9 @@ export class Game{
     // updateHover runs after player input, so its point belongs to the previous
     // camera angle. While the view is moving, aim from the fresh mouse angles
     // instead of letting that stale point pull the gun away from the reticle.
-    else if(this.hoverPoint&&!mouseMoved&&!mobileMoved)targetPoint=this.hoverPoint.clone();
+    else if(!mouseMoved&&!mobileMoved)targetPoint=stableCrosshairPoint(this,origin,new THREE.Vector3(Math.sin(this.fpsYaw)*Math.cos(this.fpsPitch),Math.sin(this.fpsPitch),Math.cos(this.fpsYaw)*Math.cos(this.fpsPitch)),AIM_CONVERGENCE.mounted);
     else targetPoint=origin.clone().add(new THREE.Vector3(Math.sin(this.fpsYaw)*Math.cos(this.fpsPitch),Math.sin(this.fpsPitch),Math.cos(this.fpsYaw)*Math.cos(this.fpsPitch)).multiplyScalar(range));
+    if(!targetPoint)targetPoint=origin.clone().add(new THREE.Vector3(Math.sin(this.fpsYaw)*Math.cos(this.fpsPitch),Math.sin(this.fpsPitch),Math.cos(this.fpsYaw)*Math.cos(this.fpsPitch)).multiplyScalar(range));
     const solved=this.turretLockTarget?this.combat.ballisticDirectionFor?.(platform,this.turretLockTarget):this.combat.ballisticDirectionTo?.(platform,targetPoint),raw=solved||targetPoint.sub(origin);this.ballisticOutOfRange=!solved;if(raw.lengthSq()<.01)return;raw.normalize();const yaw=Math.atan2(raw.x,raw.z),pitch=THREE.MathUtils.clamp(Math.asin(raw.y),THREE.MathUtils.degToRad(-35),THREE.MathUtils.degToRad(55));platform.controlYaw=yaw;platform.controlPitch=pitch;platform.aim.set(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)).normalize();platform.aimPitch=pitch;if(platform.head)platform.head.rotation.y=platform.type==='vehicle'?yaw-platform.group.rotation.y:yaw;for(const barrel of platform.barrels||[])barrel.rotation.x=Math.PI/2-pitch;if(platform===this.player)this.player.group.rotation.y=yaw}
   updateMotorcycles(dt){
     for(const bike of [...(this.world.motorcycles||[]),...(this.world.cars||[]),...(this.world.vehicles||[])]){
@@ -899,7 +914,7 @@ export class Game{
       // fire toward the point under the reticle with ballistic compensation; the FPS
       // camera follows lookDirection(), so a compensated aim never tilts the view
       const eye=p.group.position.clone().add(new THREE.Vector3(0,1.62,0));
-      const targetPoint=(this.hoverPoint&&!mouseMoved&&!mobileMoved)?this.hoverPoint.clone():eye.clone().addScaledVector(look,Math.max(60,p.weapon?.effectiveRange||45));
+      const targetPoint=(!mouseMoved&&!mobileMoved&&stableCrosshairPoint(this,eye,look,AIM_CONVERGENCE.firstPerson))||eye.clone().addScaledVector(look,Math.max(60,p.weapon?.effectiveRange||45));
       const solved=this.combat?.ballisticDirectionTo?.(p,targetPoint);
       if(solved)p.aim.copy(solved).normalize();
       else{const muzzle=this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||eye,dir=targetPoint.sub(muzzle);p.aim.copy(dir.lengthSq()>.01?dir.normalize():look)}
@@ -944,7 +959,7 @@ export class Game{
       // exact crosshair convergence: solve from the muzzle (where the round actually
       // spawns) to the point under the reticle, so the shot lands on the crosshair.
       // No smoothing on the fired direction — lag here is a guaranteed miss.
-      let targetPoint=(this.hoverPoint&&!mouseMoved&&!mobileMoved)?this.hoverPoint.clone():null;
+      let targetPoint=(!mouseMoved&&!mobileMoved)?stableCrosshairPoint(this,this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z),look,AIM_CONVERGENCE.shoulder):null;
       const hovered=Boolean(targetPoint);
       if(!targetPoint){
         // nothing (fresh) under the reticle: aim at a far point on the exact crosshair
@@ -984,6 +999,11 @@ export class Game{
     const pointerX=rect.left+rect.width/2,pointerY=rect.top+rect.height/2;
     this._hoverMouse.set((pointerX-rect.left)/rect.width*2-1,-((pointerY-rect.top)/rect.height)*2+1);
     this._hoverRaycaster.setFromCamera(this._hoverMouse,this.camera);
+    // Keep the sample tied to the view which produced it. updateHover is
+    // intentionally throttled, so an old near hit must not be reused after a
+    // quick mouse turn on the skipped frame.
+    this._hoverViewYaw=this.fpsYaw||0;
+    this._hoverViewPitch=this.fpsPitch||0;
     // ignore hits between the shoulder camera and the player (walls behind the character)
     const minHitDist=(!this.fpsMode&&this.camera?.position&&this.player?.group)?this.camera.position.distanceTo(this.player.group.position)*.82:0;
 

@@ -24,10 +24,19 @@ const iconFor = (item) =>
     projectile: "☄",
     deathEffect: "✹",
     killEffect: "☠",
+    crateTexture: "▦",
+    crateModel: "⬢",
     teamBase: "⌂",
   })[item.kind] || "✦";
 const labelFor = (kind) =>
-  MARKET_CATEGORIES.find((category) => category.id === kind)?.label || kind;
+  ({ crateTexture: 'Crate Texture', crateModel: 'Crate Model' })[kind] || MARKET_CATEGORIES.find((category) => category.id === kind)?.label || kind;
+const marketCategoryFor = item => item.category || item.kind;
+const CRATE_RARITIES = Object.freeze([
+  Object.freeze({ id: 'brown', label: 'Brown', color: '#b07840' }),
+  Object.freeze({ id: 'yellow', label: 'Yellow', color: '#ffd23f' }),
+  Object.freeze({ id: 'blue', label: 'Blue', color: '#58c8ff' }),
+  Object.freeze({ id: 'red', label: 'Red', color: '#ff4d5e' }),
+]);
 
 export class Marketplace {
   constructor({ root, save, audio, onBuyTickets, onBack }) {
@@ -37,6 +46,7 @@ export class Marketplace {
     this.onBuyTickets = onBuyTickets;
     this.onBack = onBack;
     this.category = "featured";
+    this.crateRarity = 'brown';
     this.search = "";
     this.rotation = getMarketplaceRotation();
     this.selected =
@@ -79,7 +89,7 @@ export class Marketplace {
     else
       items = MARKETPLACE_COSMETICS.filter(
         (item) =>
-          item.kind === this.category &&
+          marketCategoryFor(item) === this.category &&
           (!item.promoOnly || activePromo.has(item.id) || owned.has(item.id)),
       );
     if (this.search) {
@@ -98,11 +108,15 @@ export class Marketplace {
   }
   card(item) {
     const owned = this.collection().includes(item.id),
-      equipped = this.save.data.equipped?.[item.kind] === item.id,
+      equipped = this.isEquipped(item),
       offer = this.offerFor(item),
       price = marketplacePrice(item, this.rotation),
       favorite = this.favorites().includes(item.id);
     return `<article class="market-card rarity-${item.rarity} ${this.selected?.id === item.id ? "selected" : ""}" data-market-item="${item.id}" tabindex="0" role="button" aria-label="Preview ${escapeHtml(item.name)}"><div class="market-card-art" style="--item-primary:#${item.visual.primary.toString(16).padStart(6, "0")};--item-secondary:#${item.visual.secondary.toString(16).padStart(6, "0")}"><span>${iconFor(item)}</span><i></i><b>${item.rarity}</b>${offer?.discount ? `<em>-${offer.discount}%</em>` : ""}${item.promoOnly ? "<u>VAULT DROP</u>" : ""}</div><div class="market-card-copy"><button class="market-fave ${favorite ? "active" : ""}" data-market-action="favorite" data-id="${item.id}" aria-label="${favorite ? "Remove from" : "Add to"} favorites"><u>♥</u></button><small>${labelFor(item.kind)}</small><h3>${escapeHtml(item.name)}</h3><p>${escapeHtml(item.description)}</p><div><strong>${equipped ? "EQUIPPED" : owned ? "OWNED" : item.currency === "tickets" ? `◆ ${price}` : `◈ ${price}`}</strong>${offer?.discount ? `<s>${item.price}</s>` : ""}</div></div></article>`;
+  }
+  isEquipped(item) {
+    if (item.kind === 'crateTexture') return Object.values(this.save.data.equipped?.crateTextures || {}).includes(item.id);
+    return this.save.data.equipped?.[item.kind] === item.id;
   }
   render() {
     this.preview?.dispose();
@@ -111,15 +125,18 @@ export class Marketplace {
       this.selected = items[0];
     const item = this.selected || MARKETPLACE_COSMETICS[0],
       owned = this.collection().includes(item.id),
-      equipped = this.save.data.equipped?.[item.kind] === item.id,
+      equipped = item.kind === 'crateTexture' ? this.save.data.equipped?.crateTextures?.[this.crateRarity] === item.id : this.isEquipped(item),
       price = marketplacePrice(item, this.rotation),
       offer = this.offerFor(item),
-      ownedCount = this.collection().length;
-    this.root.innerHTML = `<main class="destructo-market"><div class="market-aurora" aria-hidden="true"></div><header class="market-topbar"><button class="market-back" data-market-action="back" aria-label="Back to hub">←</button><div class="market-brand"><span>D//M</span><div><small>DESTRUCTO</small><strong>MARKETPLACE</strong></div><i>LIVE</i></div><div class="market-wallet"><span title="Earned Chips">◈ <b>${this.save.data.chips}</b><small>CHIPS</small></span><span title="Premium Tickets">◆ <b>${this.save.data.tickets || 0}</b><small>TICKETS</small></span><button data-market-action="tickets">+ GET TICKETS</button></div></header><section class="market-shell"><aside class="market-sidebar"><label class="market-search"><span>⌕</span><input type="search" data-market-search placeholder="Search ${MARKETPLACE_COSMETICS.length} cosmetics" value="${escapeHtml(this.search)}" aria-label="Search cosmetics"></label><nav>${MARKET_CATEGORIES.map((category) => `<button class="${this.category === category.id ? "active" : ""}" data-market-category="${category.id}"><span>${category.icon}</span>${category.label}<b>${category.id === "featured" ? "LIVE" : MARKETPLACE_COSMETICS.filter((item) => item.kind === category.id && !item.promoOnly).length}</b></button>`).join("")}</nav><div class="market-collection"><span>${ownedCount}/${MARKETPLACE_COSMETICS.length}</span><strong>COLLECTION</strong><i><u style="width:${(ownedCount / MARKETPLACE_COSMETICS.length) * 100}%"></u></i><small>${this.favorites().length} FAVORITES</small></div></aside><section class="market-feed"><div class="drop-marquee"><div><span>3-HOUR DROP</span><strong>${this.rotation.promos.length} VAULT ITEMS HAVE BREACHED CONTAINMENT</strong></div><time data-market-countdown>--:--:--</time><i></i></div><div class="market-feed-head"><div><small>${this.category === "featured" ? "LIVE ROTATION" : labelFor(this.category)}</small><h1>${this.category === "featured" ? "THE DROP ZONE" : labelFor(this.category).toUpperCase()}</h1></div><span>${items.length} ITEMS</span></div><div class="market-grid">${items.length ? items.map((entry) => this.card(entry)).join("") : '<div class="market-empty"><span>⌕</span><h3>NO SIGNAL</h3><p>Try another search or category.</p></div>'}</div></section><aside class="fitting-room rarity-${item.rarity}"><div class="fitting-head"><span><i></i> LIVE FITTING ROOM</span><div><button data-market-action="rotate" title="Toggle auto-rotate">↻</button><button data-market-action="reset-view" title="Reset item preview">⌖</button></div></div><div class="fitting-stage"><canvas id="market-preview" aria-label="Interactive 3D preview of ${escapeHtml(item.name)}. Drag to rotate and use the mouse wheel to zoom."></canvas><span class="drag-hint">↔ DRAG TO ROTATE · SCROLL TO ZOOM</span><div class="fitting-scanline"></div></div><div class="fitting-copy"><div class="rarity-line"><span>${item.rarity}</span><small>${item.promoOnly ? "PROMO VAULT · " : ""}${labelFor(item.kind)}</small></div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description)}</p>${item.gameplay ? `<div class="gameplay-perk"><span>GAMEPLAY GEAR</span><strong>${escapeHtml(item.gameplay)}</strong></div>` : ""}${item.effect ? `<div class="effect-note">✦ ${escapeHtml(item.effect)}</div>` : ""}<div class="fitting-buy"><div>${offer?.discount ? `<s>${item.price}</s><small>-${offer.discount}% DROP PRICE</small>` : ""}<strong>${item.currency === "tickets" ? "◆" : "◈"} ${price}</strong></div><button class="${equipped ? "equipped" : ""}" data-market-action="purchase" data-id="${item.id}">${equipped ? "✓ EQUIPPED" : owned ? "EQUIP NOW" : "GET ITEM"}</button></div><small class="market-legal">Cosmetics are saved to this game profile. Gameplay gear is clearly marked.</small></div></aside></section></main>`;
+      ownedCount = this.collection().length,
+      cratePicker = item.kind === 'crateTexture' ? `<div class="crate-rarity-picker"><small>APPLY TEXTURE TO RARITY</small><div>${CRATE_RARITIES.map(rarity => `<button class="${this.crateRarity === rarity.id ? 'active' : ''}" data-market-action="crate-rarity" data-rarity="${rarity.id}"><i style="background:${rarity.color}"></i>${rarity.label}${this.save.data.equipped?.crateTextures?.[rarity.id] === item.id ? '<b>✓</b>' : ''}</button>`).join('')}</div><p>Rarity colors are locked. Only the surface texture changes.</p></div>` : '',
+      purchaseLabel = item.kind === 'crateTexture' ? (equipped ? `✓ EQUIPPED FOR ${this.crateRarity.toUpperCase()}` : owned ? `EQUIP FOR ${this.crateRarity.toUpperCase()}` : 'GET TEXTURE') : (equipped ? '✓ EQUIPPED' : owned ? 'EQUIP NOW' : 'GET ITEM'),
+      legalCopy = item.kind === 'crateTexture' || item.kind === 'crateModel' ? 'Crate rarity colors are fixed for gameplay clarity. Purchases change textures and 3D models only.' : 'Cosmetics are saved to this game profile. Gameplay gear is clearly marked.';
+    this.root.innerHTML = `<main class="destructo-market"><div class="market-aurora" aria-hidden="true"></div><header class="market-topbar"><button class="market-back" data-market-action="back" aria-label="Back to hub">←</button><div class="market-brand"><span>D//M</span><div><small>DESTRUCTO</small><strong>MARKETPLACE</strong></div><i>LIVE</i></div><div class="market-wallet"><span title="Earned Chips">◈ <b>${this.save.data.chips}</b><small>CHIPS</small></span><span title="Premium Tickets">◆ <b>${this.save.data.tickets || 0}</b><small>TICKETS</small></span><button data-market-action="tickets">+ GET TICKETS</button></div></header><section class="market-shell"><aside class="market-sidebar"><label class="market-search"><span>⌕</span><input type="search" data-market-search placeholder="Search ${MARKETPLACE_COSMETICS.length} cosmetics" value="${escapeHtml(this.search)}" aria-label="Search cosmetics"></label><nav>${MARKET_CATEGORIES.map((category) => `<button class="${this.category === category.id ? "active" : ""}" data-market-category="${category.id}"><span>${category.icon}</span>${category.label}<b>${category.id === "featured" ? "LIVE" : MARKETPLACE_COSMETICS.filter((entry) => marketCategoryFor(entry) === category.id && !entry.promoOnly).length}</b></button>`).join("")}</nav><div class="market-collection"><span>${ownedCount}/${MARKETPLACE_COSMETICS.length}</span><strong>COLLECTION</strong><i><u style="width:${(ownedCount / MARKETPLACE_COSMETICS.length) * 100}%"></u></i><small>${this.favorites().length} FAVORITES</small></div></aside><section class="market-feed"><div class="drop-marquee"><div><span>3-HOUR DROP</span><strong>${this.rotation.promos.length} VAULT ITEMS HAVE BREACHED CONTAINMENT</strong></div><time data-market-countdown>--:--:--</time><i></i></div><div class="market-feed-head"><div><small>${this.category === "featured" ? "LIVE ROTATION" : labelFor(this.category)}</small><h1>${this.category === "featured" ? "THE DROP ZONE" : labelFor(this.category).toUpperCase()}</h1></div><span>${items.length} ITEMS</span></div><div class="market-grid">${items.length ? items.map((entry) => this.card(entry)).join("") : '<div class="market-empty"><span>⌕</span><h3>NO SIGNAL</h3><p>Try another search or category.</p></div>'}</div></section><aside class="fitting-room rarity-${item.rarity}"><div class="fitting-head"><span><i></i> LIVE FITTING ROOM</span><div><button data-market-action="rotate" title="Toggle auto-rotate">↻</button><button data-market-action="reset-view" title="Reset item preview">⌖</button></div></div><div class="fitting-stage"><canvas id="market-preview" aria-label="Interactive 3D preview of ${escapeHtml(item.name)}. Drag to rotate and use the mouse wheel to zoom."></canvas><span class="drag-hint">↔ DRAG TO ROTATE · SCROLL TO ZOOM</span><div class="fitting-scanline"></div></div><div class="fitting-copy"><div class="rarity-line"><span>${item.rarity}</span><small>${item.promoOnly ? "PROMO VAULT · " : ""}${labelFor(item.kind)}</small></div><h2>${escapeHtml(item.name)}</h2><p>${escapeHtml(item.description)}</p>${cratePicker}${item.gameplay ? `<div class="gameplay-perk"><span>GAMEPLAY GEAR</span><strong>${escapeHtml(item.gameplay)}</strong></div>` : ""}${item.effect ? `<div class="effect-note">✦ ${escapeHtml(item.effect)}</div>` : ""}<div class="fitting-buy"><div>${offer?.discount ? `<s>${item.price}</s><small>-${offer.discount}% DROP PRICE</small>` : ""}<strong>${item.currency === "tickets" ? "◆" : "◈"} ${price}</strong></div><button class="${equipped ? "equipped" : ""}" data-market-action="purchase" data-id="${item.id}">${purchaseLabel}</button></div><small class="market-legal">${legalCopy}</small></div></aside></section></main>`;
     const canvas = this.root.querySelector("#market-preview");
     if (canvas) {
       this.preview = new MarketplacePreview(canvas);
-      this.preview.setItem(item, this.save.data.equipped || {});
+      this.preview.setItem(item, this.save.data.equipped || {}, { crateRarity: this.crateRarity });
     }
     this.tick();
   }
@@ -162,8 +179,13 @@ export class Marketplace {
       return;
     }
     if (action === "reset-view") {
-      this.preview?.setItem(this.selected, this.save.data.equipped || {});
+      this.preview?.setItem(this.selected, this.save.data.equipped || {}, { crateRarity: this.crateRarity });
       return;
+    }
+    if (action === 'crate-rarity') {
+      const rarity = event.target.closest('[data-rarity]')?.dataset.rarity;
+      if (CRATE_RARITIES.some(entry => entry.id === rarity)) this.crateRarity = rarity;
+      this.audio?.play?.('change_texture');this.render();return;
     }
     if (action === "favorite" && id) {
       event.stopPropagation();
@@ -212,8 +234,8 @@ export class Marketplace {
         return;
       }
     }
-    if (this.save.data.equipped[item.kind] !== id)
-      this.save.equipCosmetic(item.kind, id);
+    if (item.kind === 'crateTexture') this.save.equipCrateTexture(this.crateRarity, id);
+    else if (this.save.data.equipped[item.kind] !== id) this.save.equipCosmetic(item.kind, id);
     this.audio?.play?.("change_texture");
     this.flash(
       owned
