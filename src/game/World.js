@@ -6,17 +6,41 @@ import { mapById, DEATHMATCH_SECRET_PLANS } from '../data/maps.js';
 import { MAP_SURFACE_THEMES } from '../data/mapSurfaces.js';
 import { NavGrid } from './Navigation.js';
 
+const blacksiteFormation = (centerX, centerZ, columns, rows, spacing, count = columns * rows) => Object.freeze(Array.from({length:count},(_,index)=>Object.freeze({
+  x:centerX+((index%columns)-(columns-1)/2)*spacing,
+  z:centerZ+(Math.floor(index/columns)-(rows-1)/2)*spacing,
+})));
+
+export const BLACKSITE_TRANSIT = Object.freeze({
+  halfWidth: 86,
+  gateHalfWidth: 17,
+  blastGates: Object.freeze([Object.freeze({z:-94,x:-28}),Object.freeze({z:-50,x:28}),Object.freeze({z:-6,x:0}),Object.freeze({z:38,x:-28}),Object.freeze({z:82,x:28})]),
+  // Mission squads deploy beyond the entrance blast gates, not on the generic
+  // team-base ring outside the facility. These are complete starting rosters:
+  // five player gunners and sixteen Blacksite defenders.
+  playerSpawn: Object.freeze({x:24,z:68}),
+  enemySpawn: Object.freeze({x:-20,z:-70}),
+  playerDeployment: blacksiteFormation(24,68,3,2,3,5),
+  enemyDeployment: blacksiteFormation(-20,-70,4,4,3,16),
+  enemyWaveSpawns: Object.freeze([Object.freeze({x:-65,z:-75}),Object.freeze({x:65,z:-75})]),
+  scientist: Object.freeze({x:61,z:-116}),
+  extractionJet: Object.freeze({x:-55,z:104}),
+  extraction: Object.freeze({x:-35,z:106}),
+});
+
+export function blacksiteBlastWallSegments(){const left=-BLACKSITE_TRANSIT.halfWidth,right=BLACKSITE_TRANSIT.halfWidth,gap=BLACKSITE_TRANSIT.gateHalfWidth;return BLACKSITE_TRANSIT.blastGates.flatMap(({z,x:opening},index)=>{const lw=opening-gap-left,rw=right-(opening+gap),segments=[];if(lw>0)segments.push({x:left+lw/2,z,w:lw,d:2.2,index});if(rw>0)segments.push({x:opening+gap+rw/2,z,w:rw,d:2.2,index});return segments})}
+
 export class World {
   constructor(scene, materials, factory, mapId = 'crossroads', gameMode = 'deathmatch') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.gameMode = gameMode; this.hasWater = Boolean(this.map.hasWater); this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.dominationTowers = []; this.colliders = []; this.secretPlaces = []; this.missionTargets=[]; this.teamCompounds = {}; this.bounds = gameMode === 'domination' ? 96 : (this.map.bounds || 234); }
   // teams: [{id, color, dark}] — a base + builder pad is raised for each one, spread on a ring
   build(teams = [{ id: 'blue', color: 0x2fb4ff, dark: 0x11638f }, { id: 'red', color: 0xff5062, dark: 0x8e2634 }]) {
     if(this.gameMode==='deathmatch'&&teams.length>(this.map.maxTeams||9))throw new RangeError(`${this.map.title} supports at most ${this.map.maxTeams} teams`);
-    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012],bootcamp:[0x5f8f9c,0x8cb0a6,.011],goldrush:[0x72502c,0xb38d55,.009],'gaia-bastion':[0x704d3d,0xa47d63,.007],'storm-dam':[0x263f52,0x597985,.012],sunforge:[0x30191c,0x5d2721,.014]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
+    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012],bootcamp:[0x5f8f9c,0x8cb0a6,.011],goldrush:[0x72502c,0xb38d55,.009],'gaia-bastion':[0x704d3d,0xa47d63,.007],'storm-dam':[0x263f52,0x597985,.012],sunforge:[0x30191c,0x5d2721,.014],'gaia-blacksite':[0x07121b,0x132731,.0065]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
     this.scene.background = new THREE.Color(atmos[0]); this.scene.fog = new THREE.FogExp2(atmos[1], this.gameMode==='deathmatch'?atmos[2]*.42:atmos[2]);
     this.teams = teams;
     // base ring: player team lands at the bottom of the map, others spread evenly
     const ringRadius = this.gameMode === 'domination' ? (teams.length <= 2 ? 84 : 80) : (this.map.baseRadius || 194);
-    this.basePositions = {}; this.spawnPositions = {}; this.builderPositions = {}; this.factories = {}; this.baseTurrets = {};
+    this.basePositions = {}; this.spawnPositions = {}; this.deploymentPositions = {}; this.builderPositions = {}; this.factories = {}; this.baseTurrets = {};
     teams.forEach((t, i) => {
       const angle = Math.PI / 2 + i / teams.length * Math.PI * 2;
       let x = Math.cos(angle) * ringRadius;
@@ -72,6 +96,7 @@ export class World {
       if(this.map.id==='sunken'){result+=1.2+Math.sin(x*.045)*Math.cos(z*.05)*2.1;for(const [tx,tz] of [[0,0],[-48,-28],[48,-28],[-42,38],[42,38]])result*=.72+.28*THREE.MathUtils.smoothstep(Math.hypot(x-tx,z-tz),5,12);}
       if(this.map.id==='serpent'){result+=2.2+Math.max(0,10-Math.abs(z+Math.sin(x*.045)*13)*.42)+Math.sin(x*.07)*1.4;}
       if(this.map.id==='eclipse'){const d=Math.hypot(x,z);result+=2.5+Math.max(0,9-d*.1)+Math.sin(x*.04)*Math.cos(z*.045)*2.8;}
+      if(this.map.id==='gaia-blacksite')return 0;
       return Math.max(0,result);
     };
   }
@@ -195,6 +220,8 @@ export class World {
   removeCollidersFor(entity){for(const collider of entity?.colliderHandles||[])collider.enabled=false;this.nav?.invalidate();}
   walkableTopAt(position){let top=null;for(const collider of this.colliders){if(!collider.enabled||!collider.walkable||collider.entity?.dead||!this.colliderContains(position,collider,.08))continue;const y=this.colliderFrame(collider).position.y+collider.top;if(top===null||y>top)top=y;}return top;}
   groundAt(position) { const terrain=this.heightAt(position.x, position.z),platform=this.walkableTopAt(position);return platform===null?terrain:Math.max(terrain,platform); }
+  walkablePosition(position,radius=.72,maxRing=12){const result=position.clone();if(this.nav?.blockedAt(result.x,result.z,radius)){const cell=this.nav.nearestFreeCell(this.nav.cellX(result.x),this.nav.cellZ(result.z),maxRing);if(cell)result.copy(this.nav.toWorld(cell.cx,cell.cz))}result.y=this.groundAt(result);return result}
+  deploymentPosition(teamId,index=0,radius=.72){const slots=this.deploymentPositions?.[teamId];if(!slots?.length)return null;return this.walkablePosition(slots[index%slots.length],radius)}
   surfaceAt(position) {
     if (this.isWater(position)) return 'water';
     return ['crossroads', 'crown', 'rift', 'sunken'].includes(this.map.id) ? 'rock' : 'dirt';
@@ -361,6 +388,7 @@ export class World {
   populate() {
     const random = this.seeded(8021);
     if(this.gameMode==='campaign'){
+      if(this.map.id==='gaia-blacksite')return;
       const population=this.map.id==='bootcamp'?26:['gaia-bastion','storm-dam','sunforge'].includes(this.map.id)?86:64,extent=this.bounds-8;
       for(let i=0;i<population;i++){const x=random()*extent*2-extent,z=random()*extent*2-extent;if(this.nearBase(x,z,28)||Math.abs(x)<11){i--;continue}if(i%3===0)this.createTree(x,z,.65+random()*.45);else this.createRock(x,z,.55+random()*.9)}
       if(this.map.id==='gaia-bastion')for(const [x,z] of [[-62,-8],[-48,24],[55,39],[67,11],[-72,56]])this.wildlife.push(this.factory.createWildlife('bear',new THREE.Vector3(x,this.heightAt(x,z),z)));
@@ -451,6 +479,7 @@ export class World {
     else if(this.map.id==='gaia-bastion')this.buildGaiaBastion();
     else if(this.map.id==='storm-dam')this.buildStormDam();
     else if(this.map.id==='sunforge')this.buildSunforge();
+    else if(this.map.id==='gaia-blacksite')this.buildGaiaBlacksite();
     else this.buildSummitArena();
   }
   buildBootcamp(){
@@ -499,9 +528,37 @@ export class World {
     for(const [x,z] of [[-26,-26],[26,-26],[-26,26],[26,26]]){const lock=this.missionProp(new THREE.BoxGeometry(5,8,5),'neon_concrete',x,z,4,900,3.5,{repeat:2,emissive:0xff3500,emissiveIntensity:.9});const band=new THREE.Mesh(new THREE.TorusGeometry(3.2,.3,8,28),new THREE.MeshBasicMaterial({color:0x48dfff}));band.rotation.x=Math.PI/2;band.position.set(x,this.heightAt(x,z)+4,z);this.scene.add(band);lock.userData.entity.attachments=[band]}
     for(const [name,x,z] of [['SMUGGLER COOLANT TUNNEL',-102,54],['FOREMAN ASH VAULT',96,-62]]){const pos=new THREE.Vector3(x,this.heightAt(x,z),z);this.secretPlaces.push({name,position:pos.clone(),radius:11});const crate=this.factory.createCrate(pos,CRATE_TYPES.red);crate.noAI=true;this.crates.push(crate)}
   }
+  buildGaiaBlacksite(){
+    const armor='gaia_blacksite_armor',wall=(x,z,w,d,h=6.5,texture=armor,options={})=>this.themedProp(new THREE.BoxGeometry(w,h,d),texture,x,z,h/2,options.hp||1300,Math.max(w,d)*.5,{repeat:options.repeat||3,...options}),cyan=this.materials.color(0x47e7ff,{emissive:0x0e8daa,emissiveIntensity:2.1,metalness:.45}),amber=this.materials.color(0xffc43f,{emissive:0x885800,emissiveIntensity:1.2,metalness:.55}),dark=this.materials.color(0x111923,{metalness:.8,roughness:.28});
+    // Perimeter shell with wide deployment gates at both ends.
+    wall(-88,0,2.6,264,8);wall(88,0,2.6,264,8);for(const z of [-132,132]){wall(-53,z,68,2.6,8);wall(53,z,68,2.6,8)}
+    // Alternating blast walls turn the 260-metre central spine into readable, flanking hallways.
+    for(const segment of blacksiteBlastWallSegments())wall(segment.x,segment.z,segment.w,segment.d,6.6,segment.index%2?'corrugated_steel':armor);for(const {z,x:opening} of BLACKSITE_TRANSIT.blastGates){const gap=BLACKSITE_TRANSIT.gateHalfWidth;for(const x of [opening-gap,opening+gap]){const post=wall(x,z,1.2,4,8,'neon_concrete',{emissive:0x0a7189,emissiveIntensity:.6});post.userData.blacksiteDoorPost=true}const lintel=wall(opening,z,gap*2-1,1.4,1.1,armor,{collider:false});lintel.position.y=6.45}
+    // Longitudinal dividers create side service lanes while cross-corridors keep multiple tactical routes open.
+    for(const x of [-44,44])for(const [z,len] of [[-112,18],[-73,26],[-28,24],[16,24],[60,24],[108,20]])wall(x,z,2.1,len,5.8,'corrugated_steel');
+    // Cargo vaults, armories, med bays and the sealed research wing.
+    for(const [x,z,w,d,h,texture] of [[-66,-111,30,20,5.2,armor],[64,-110,31,22,5.8,'neon_concrete'],[-66,-70,28,24,5.4,'corrugated_steel'],[65,-27,30,25,5.8,armor],[-64,17,32,23,5.5,'neon_concrete'],[64,60,31,24,5.7,'corrugated_steel'],[-64,105,30,23,5.6,armor],[64,107,32,22,5.8,'neon_concrete']]){const slab=this.themedProp(new THREE.BoxGeometry(w,.42,d),texture,x,z,.21,900,Math.max(w,d)*.45,{repeat:4,walkable:true});slab.userData.blacksiteRoom=true;for(const sx of [-1,1]){const column=wall(x+sx*(w/2-1.2),z,1.4,1.4,h+1,'vehicle_metal');column.userData.blacksiteColumn=true}}
+    // Open ceiling trusses sell the indoor scale without hiding the third-person camera.
+    for(let z=-121;z<=121;z+=22){const beam=wall(0,z,174,.48,.5,'vehicle_metal',{collider:false});beam.position.y=7.45;for(const x of [-82,-42,0,42,82]){const drop=new THREE.Mesh(new THREE.BoxGeometry(.3,1.4,.3),dark);drop.position.set(x,6.7,z);this.scene.add(drop)}if(Math.abs(z)%44<1){for(const x of [-63,-21,21,63]){const lamp=new THREE.Mesh(new THREE.BoxGeometry(4.2,.16,.55),cyan);lamp.position.set(x,7.12,z);this.scene.add(lamp)}}}
+    // Floor beacons and warning pylons lead the eye through the otherwise dark facility.
+    for(let z=-118;z<=118;z+=18)for(const x of [-18,18]){const lamp=new THREE.Mesh(new THREE.BoxGeometry(1.6,.08,.32),z%36?cyan:amber);lamp.position.set(x,.09,z);this.scene.add(lamp)}
+    for(const [x,z] of [[-80,-119],[80,-119],[-80,-61],[80,-61],[-80,-17],[80,-17],[-80,28],[80,28],[-80,72],[80,72],[-80,116],[80,116]]){const pylon=wall(x,z,1.1,1.1,4.8,'vehicle_metal');const light=new THREE.PointLight((x+z)%3?0x38ddff:0xffbd35,7,18,2);light.position.set(x,4,z);this.scene.add(light);pylon.userData.blacksiteLight=true}
+    // Physical cover and visual storytelling: stacked freight, field desks, server banks and blast shields.
+    for(const [x,z,r] of [[-25,-113,0],[26,-83,.2],[-63,-42,.5],[62,-2,-.45],[-25,24,.2],[27,61,-.2],[-62,82,.4],[61,96,-.4]])this.createSandbags(new THREE.Vector3(x,0,z),r);
+    for(const [x,z] of [[-72,-104],[-61,-104],[-70,-62],[-60,-62],[61,-20],[71,-20],[-69,12],[-58,12],[59,54],[70,54],[-70,99],[-59,99]])for(const y of [1.2,3.7]){const server=wall(x,z,4.6,1.8,4.6,armor,{collider:y<2});server.position.y=y;const strip=new THREE.Mesh(new THREE.BoxGeometry(3.6,.12,1.9),cyan);strip.position.set(x,y+.55,z+1);this.scene.add(strip)}
+    const sign=(text,x,z,rotation=0)=>{const canvas=document.createElement('canvas');canvas.width=512;canvas.height=128;const ctx=canvas.getContext('2d');ctx.fillStyle='rgba(5,13,22,.94)';ctx.fillRect(3,3,506,122);ctx.strokeStyle='#47e7ff';ctx.lineWidth=7;ctx.strokeRect(5,5,502,118);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='900 46px Impact,system-ui';ctx.fillText(text,256,65);const texture=new THREE.CanvasTexture(canvas);texture.colorSpace=THREE.SRGBColorSpace;const sprite=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,transparent:true,depthWrite:false}));sprite.position.set(x,5.6,z);sprite.scale.set(7.2,1.8,1);sprite.material.rotation=rotation;this.scene.add(sprite)};
+    sign('ATLAS BLACKSITE // TRANSIT',0,116);sign('CARGO VAULT 04',-62,47);sign('BIO-RESEARCH // LEODONES',56,-118);sign('SURFACE EXTRACTION',0,129);
+    this.scientistSpawn=new THREE.Vector3(BLACKSITE_TRANSIT.scientist.x,0,BLACKSITE_TRANSIT.scientist.z);this.scientistSpawn.y=this.heightAt(this.scientistSpawn.x,this.scientistSpawn.z);
+    // Exact interior formations replace the generic base-ring offset calculation.
+    // Every member of both starting rosters gets an authored slot in a clear bay.
+    const [playerTeam,enemyTeam]=this.teams;this.deploymentPositions[playerTeam.id]=BLACKSITE_TRANSIT.playerDeployment.map(point=>new THREE.Vector3(point.x,this.heightAt(point.x,point.z),point.z));this.spawnPositions[playerTeam.id]=new THREE.Vector3(BLACKSITE_TRANSIT.playerSpawn.x,this.heightAt(BLACKSITE_TRANSIT.playerSpawn.x,BLACKSITE_TRANSIT.playerSpawn.z),BLACKSITE_TRANSIT.playerSpawn.z);if(enemyTeam){this.deploymentPositions[enemyTeam.id]=BLACKSITE_TRANSIT.enemyDeployment.map(point=>new THREE.Vector3(point.x,this.heightAt(point.x,point.z),point.z));this.spawnPositions[enemyTeam.id]=new THREE.Vector3(BLACKSITE_TRANSIT.enemySpawn.x,this.heightAt(BLACKSITE_TRANSIT.enemySpawn.x,BLACKSITE_TRANSIT.enemySpawn.z),BLACKSITE_TRANSIT.enemySpawn.z)}this.atlasWaveSpawns=BLACKSITE_TRANSIT.enemyWaveSpawns.map(point=>new THREE.Vector3(point.x,this.heightAt(point.x,point.z),point.z));
+    this.missionCratePoints=[];for(const [cx,cz] of [[-70,-116],[0,-108],[68,-89],[-67,-73],[55,-55],[-64,-30],[65,-14],[-63,8],[62,27],[-67,51],[64,69],[-64,91],[62,108],[0,70]])for(let i=0;i<3;i++)this.missionCratePoints.push(new THREE.Vector3(cx+(i-1)*2.1,0,cz+(i%2)*2));
+    const jetPosition=new THREE.Vector3(BLACKSITE_TRANSIT.extractionJet.x,0,BLACKSITE_TRANSIT.extractionJet.z);jetPosition.y=this.heightAt(jetPosition.x,jetPosition.z);this.createDestroJet(jetPosition);this.destroJet.group.name='gaia-rescue-destrojet';
+    this.secretPlaces.push({name:'ATLAS DIRECTOR\'S VAULT',position:new THREE.Vector3(-78,0,-118),radius:9},{name:'LEODONES PROTOTYPE LOCKER',position:new THREE.Vector3(78,0,-113),radius:9});
+  }
   themedProp(geometry,texture,x,z,y=0,hp=420,radius=2,options={}){
     const {collider=true,walkable=false,...materialOptions}=options,object=new THREE.Mesh(geometry,this.materials.building(texture,materialOptions));object.position.set(x,this.heightAt(x,z)+y,z);object.castShadow=object.receiveShadow=true;this.scene.add(object);
-    const entity={id:crypto.randomUUID(),type:'prop',subtype:texture,group:object,hp,maxHp:hp,radius,dead:false,jellyStrength:.35};object.userData.entity=entity;this.destructibles.push(entity);
+    const entity={id:crypto.randomUUID(),type:'prop',subtype:texture,group:object,hp,maxHp:hp,radius,dead:false,jellyStrength:.35,navigationIgnored:!collider};object.userData.entity=entity;this.destructibles.push(entity);
     if(collider){geometry.computeBoundingBox();const box=geometry.boundingBox,size=new THREE.Vector3();box.getSize(size);this.registerCollider(object,{shape:'box',halfX:size.x*.5,halfZ:size.z*.5,top:box.max.y,blocking:!walkable,walkable},entity)}return object;
   }
   buildCity(){

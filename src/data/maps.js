@@ -99,6 +99,11 @@ export const CAMPAIGN_MAPS = Object.freeze({
     description: 'A vast caldera factory surrounded by lava trenches, coolant canals, armored blast walls, furnace towers and smuggler tunnels.',
     accent: '#ff6a2b', icon: '✹', texture: 'volcanic_rock', weather: 'REACTOR ASHFALL', maxTeams: 2, sizeClass: 'LARGE', bounds: 140, baseRadius: 110, surfaceScale: 1,
   }),
+  'gaia-blacksite': Object.freeze({
+    id: 'gaia-blacksite', mode: 'campaign', title: 'ATLAS BLACKSITE', tag: 'SUBTERRANEAN ESCORT',
+    description: 'A colossal buried military complex of armored halls, cargo vaults, laboratories, choke points and interlocking service corridors.',
+    accent: '#47e7ff', icon: '⌬', texture: 'gaia_blacksite_armor', weather: 'SUBTERRANEAN LOCKDOWN', maxTeams: 2, sizeClass: 'HUGE', bounds: 176, baseRadius: 146, surfaceScale: 1,
+  }),
 });
 
 export const GAME_MODES = Object.freeze({

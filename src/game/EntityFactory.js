@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { CLASSES, TEAM, WEAPONS, CRATE_TYPES } from '../data/gameData.js';
 import { SKIN_TEXTURES } from './Materials.js';
+import { createWearableCosmetic } from './CosmeticModels.js';
+import { MARKETPLACE_COSMETICS } from '../data/marketplaceData.js';
 
 const GEO = {
   body: new THREE.BoxGeometry(1.05, 1.3, .82), head: new THREE.BoxGeometry(.92, .78, .86), hand: new THREE.BoxGeometry(.34, .34, .34), boot: new THREE.BoxGeometry(.42, .3, .62), eye: new THREE.BoxGeometry(.22, .15, .06), gun: new THREE.BoxGeometry(.22, .26, .85), barrel: new THREE.CylinderGeometry(.07, .07, .62, 6), crate: new THREE.BoxGeometry(1.15, 1.15, 1.15),
@@ -26,7 +28,7 @@ export class EntityFactory {
     const def = CLASSES[classId], color = this.teamColor(team);
     const group = new THREE.Group(); group.position.copy(position); group.name = `${team}-${classId}`;
     const skinName = opts.skin || SKIN_TEXTURES[[...classId].reduce((s, c) => s + c.charCodeAt(0), 0) % SKIN_TEXTURES.length];
-    const uniform = this.materials.skin(skinName, color), dark = this.materials.color(this.teamDark(team)), skin = this.materials.color(0xf3d6a6);
+    const cosmeticSkin=MARKETPLACE_COSMETICS.find(item=>item.id===skinName&&item.kind==='skin'),uniform=cosmeticSkin?this.materials.color(cosmeticSkin.visual.primary,{emissive:cosmeticSkin.visual.secondary,emissiveIntensity:.12,metalness:.28,roughness:.66}):this.materials.skin(skinName, color), dark = this.materials.color(this.teamDark(team)), skin = this.materials.color(0xf3d6a6);
     const body = mesh(GEO.body, uniform); body.position.y = 1.15; group.add(body);
     const head = mesh(GEO.head, uniform); head.position.y = 2.15; group.add(head);
     const auraMat = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: .55, depthWrite: false, side: THREE.BackSide, blending: THREE.AdditiveBlending });
@@ -48,15 +50,32 @@ export class EntityFactory {
     const weaponGroup = new THREE.Group(); weaponGroup.position.set(.72, 1.22, .72); group.add(weaponGroup);
     const jetpackRig=opts.jetpack?this.createJetpackRig():null;if(jetpackRig)group.add(jetpackRig.group);
     if (opts.hat) this.addHat(group, opts.hat, color);
+    if (opts.boots) this.addBoots(group, opts.boots, 0x00ff00);
+    if (opts.attachment) this.addAttachment(group, opts.attachment, 0x0000ff);
     const grade = opts.grade || 'normal';
     if (grade === 'elite') { const stripe = mesh(new THREE.TorusGeometry(.68, .07, 6, 14), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .6 })); stripe.rotation.x = Math.PI / 2; stripe.position.y = 1.55; group.add(stripe); }
     if (grade === 'special') { group.scale.setScalar(1.12); const core = mesh(new THREE.OctahedronGeometry(.22, 0), this.materials.color(0xa4ecff, { emissive: 0x2fa0e0, emissiveIntensity: 1.5 }), false); core.position.set(0, 1.35, .58); group.add(core); const halo = mesh(new THREE.TorusGeometry(.92, .05, 6, 20), this.materials.color(0x9fe8ff, { emissive: 0x2fa0e0, emissiveIntensity: 1.1 }), false); halo.rotation.x = Math.PI / 2; halo.position.y = .12; group.add(halo); }
     const primaryWeaponId=def.weapon==='pistol'?null:def.weapon;
-    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, jetpack:Boolean(opts.jetpack), jetpackRig, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, jetpackBurn:0, jetpackActive:false, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
+    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, hat:opts.hat||null, boots:opts.boots||null, attachment:opts.attachment||null, projectileStyle:opts.projectile||null, deathEffect:opts.deathEffect||null, killEffect:opts.killEffect||null, jetpack:Boolean(opts.jetpack), jetpackRig, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, jetpackBurn:0, jetpackActive:false, doubleJumped:false, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
     this.setWeaponModel(entity, def.weapon, WEAPONS[def.weapon]);
     this.applyPassive(entity);
     if(entity.primaryWeaponId)entity.primaryWeapon=entity.weapon;
     group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); group.userData.entity = entity; this.scene.add(group); return entity;
+  }
+  createProfessorLeodones(team, position, opts = {}) {
+    const e=this.createUnit('medic',team,position,false,opts),white=this.materials.color(0xe8edf1,{roughness:.72}),whiteTrim=this.materials.color(0xfafcff,{roughness:.55}),shirt=this.materials.color(0xb7d9e8,{roughness:.75}),skin=this.materials.color(0xe0b681,{roughness:.9}),dark=this.materials.color(0x18202b,{metalness:.35,roughness:.45}),glass=this.materials.color(0x80eaff,{emissive:0x166b82,emissiveIntensity:.75,transparent:true,opacity:.65,metalness:.15,roughness:.12}),packMetal=this.materials.building('gaia_blacksite_armor',{roughness:.62,metalness:.58}),cyan=this.materials.color(0x4beaff,{emissive:0x0aa7ca,emissiveIntensity:1.8,metalness:.4}),amber=this.materials.color(0xffc43f,{emissive:0x8f5d00,emissiveIntensity:.8,metalness:.55});
+    e.group.name='professor-leodones';e.body.material=white;e.head.material=skin;e.leftHand.material=skin;e.rightHand.material=skin;e.leftBoot.material=e.rightBoot.material=dark;e.weaponGroup.clear();e.weapon=null;e.weaponId='unarmed';e.primaryWeapon=null;e.primaryWeaponId=null;e.ammo=0;
+    const coat=new THREE.Group();coat.name='leodones-scientist-suit';e.group.add(coat);
+    const shirtPanel=mesh(new THREE.BoxGeometry(.5,.82,.07),shirt);shirtPanel.position.set(0,1.22,.445);coat.add(shirtPanel);
+    for(const side of [-1,1]){const lapel=mesh(new THREE.BoxGeometry(.25,.7,.075),whiteTrim);lapel.position.set(side*.23,1.48,.49);lapel.rotation.z=side*.32;coat.add(lapel);const pocket=mesh(new THREE.BoxGeometry(.3,.24,.08),whiteTrim);pocket.position.set(side*.31,.96,.49);coat.add(pocket);const strap=mesh(new THREE.BoxGeometry(.13,1.32,.08),dark);strap.position.set(side*.38,1.35,-.47);strap.rotation.z=side*.03;coat.add(strap)}
+    const tie=mesh(new THREE.ConeGeometry(.105,.58,4),this.materials.color(0x35b8d4,{emissive:0x063d4b,emissiveIntensity:.35}));tie.position.set(0,1.37,.52);tie.rotation.z=Math.PI;coat.add(tie);
+    const belt=mesh(new THREE.BoxGeometry(1.08,.13,.9),dark);belt.position.set(0,.78,0);coat.add(belt);const badge=mesh(new THREE.BoxGeometry(.24,.31,.045),glass,false);badge.position.set(.34,1.59,.535);coat.add(badge);
+    const glasses=new THREE.Group();glasses.name='leodones-eyeglasses';glasses.position.set(0,.09,.475);e.head.add(glasses);for(const x of [-.235,.235]){const rim=mesh(new THREE.TorusGeometry(.205,.035,6,16),dark,false);rim.position.x=x;glasses.add(rim);const lens=mesh(new THREE.CircleGeometry(.17,16),glass,false);lens.position.set(x,0,.012);glasses.add(lens)}const bridge=mesh(new THREE.BoxGeometry(.14,.035,.035),dark,false);bridge.position.z=.02;glasses.add(bridge);
+    const hair=new THREE.Group();hair.name='leodones-hair';e.head.add(hair);const hairMat=this.materials.color(0xc9d0d5,{metalness:.15,roughness:.9});for(let i=0;i<7;i++){const a=(i-3)*.32,tuft=mesh(new THREE.ConeGeometry(.11,.43,5),hairMat);tuft.position.set(Math.sin(a)*.38,.47,Math.cos(a)*.2-.05);tuft.rotation.z=-Math.sin(a)*.38;hair.add(tuft)}
+    const backpack=new THREE.Group();backpack.name='leodones-atlas-research-pack';backpack.position.set(0,1.38,-.72);e.group.add(backpack);const pack=mesh(new THREE.BoxGeometry(1.45,1.82,.72),packMetal);pack.position.y=.02;backpack.add(pack);const lower=mesh(new THREE.BoxGeometry(1.25,.55,.85),dark);lower.position.set(0,-.84,-.02);backpack.add(lower);for(const x of [-.5,.5]){const canister=mesh(new THREE.CylinderGeometry(.19,.23,1.48,8),x<0?cyan:amber);canister.position.set(x,.05,-.48);backpack.add(canister);const cap=mesh(new THREE.SphereGeometry(.2,7,5),dark);cap.position.set(x,.8,-.48);backpack.add(cap)}for(const y of [-.52,.02,.56]){const rail=mesh(new THREE.BoxGeometry(1.58,.09,.82),dark);rail.position.y=y;backpack.add(rail)}const core=mesh(new THREE.OctahedronGeometry(.25,0),cyan,false);core.position.set(0,.16,-.48);backpack.add(core);const antenna=mesh(new THREE.CylinderGeometry(.025,.025,1.25,5),dark,false);antenna.position.set(.56,1.25,-.2);antenna.rotation.z=-.08;backpack.add(antenna);const antennaTip=mesh(new THREE.SphereGeometry(.08,6,4),amber,false);antennaTip.position.set(.61,1.87,-.2);backpack.add(antennaTip);
+    const nameplateCanvas=document.createElement('canvas');nameplateCanvas.width=512;nameplateCanvas.height=96;const ctx=nameplateCanvas.getContext('2d');ctx.fillStyle='rgba(5,14,23,.88)';ctx.fillRect(3,3,506,90);ctx.strokeStyle='#4beaff';ctx.lineWidth=6;ctx.strokeRect(4,4,504,88);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='900 43px Impact,system-ui';ctx.fillText('PROFESSOR LEODONES',256,49);const nameTexture=new THREE.CanvasTexture(nameplateCanvas);nameTexture.colorSpace=THREE.SRGBColorSpace;const nameplate=new THREE.Sprite(new THREE.SpriteMaterial({map:nameTexture,transparent:true,depthWrite:false}));nameplate.position.set(0,3.35,0);nameplate.scale.set(4.6,.86,1);e.group.add(nameplate);
+    e.escortNPC=true;e.missionVIP=true;e.missionScripted=true;e.classDef={...e.classDef,name:'Professor Leodones',speed:opts.speed||3.15};e.maxHp=opts.hp||520;e.hp=e.maxHp;e.radius=.82;e.scientistRig={coat,glasses,hair,backpack,core,antennaTip,nameplate};e.hpBarTimer=Infinity;
+    e.group.traverse(o=>{if(o.isMesh)o.userData.entity=e});e.group.userData.entity=e;return e;
   }
   createJetpackRig(){
     const group=new THREE.Group();group.name='rocket-jetpack';group.position.set(0,1.33,-.5);const metal=this.materials.building('vehicle_metal',{metalness:.85,roughness:.24}),trim=this.materials.color(0xffd23f,{emissive:0x8b5700,emissiveIntensity:.45,metalness:.8}),flameMat=this.materials.color(0x55d9ff,{emissive:0x28b9ff,emissiveIntensity:2.2,transparent:true,opacity:.9});const flames=[];
@@ -133,28 +152,39 @@ export class EntityFactory {
     entity.weaponId = weaponId; entity.weapon = weapon;entity.muzzleAnchors=[];root.traverse(o=>{if(o.name==='muzzle-anchor')entity.muzzleAnchors.push(o)});
   }
   addHat(group, hat, color) {
-    const gold = this.materials.color(0xffd23f, { metalness: .6, roughness: .35 }), dark = this.materials.color(0x2b2f45);
-    const parts = new THREE.Group(); parts.position.y = 2.62; parts.name = 'hat';
-    switch (hat) {
-      case 'cap': { const top = mesh(new THREE.SphereGeometry(.48, 8, 5, 0, Math.PI * 2, 0, Math.PI / 2), this.materials.color(color)); parts.add(top); const brim = mesh(new THREE.BoxGeometry(.55, .07, .45), this.materials.color(color)); brim.position.set(0, .02, .5); parts.add(brim); break; }
-      case 'helmet': { const dome = mesh(new THREE.SphereGeometry(.62, 8, 6, 0, Math.PI * 2, 0, Math.PI / 1.7), this.materials.metal); dome.position.y = -.12; parts.add(dome); break; }
-      case 'mohawk': { for (let i = 0; i < 5; i++) { const spike = mesh(new THREE.ConeGeometry(.09, .42, 4), this.materials.color(0xff4dd2, { emissive: 0x991f80, emissiveIntensity: .8 })); spike.position.set(0, .18, .34 - i * .17); parts.add(spike); } break; }
-      case 'horns': { for (const x of [-.42, .42]) { const horn = mesh(new THREE.ConeGeometry(.12, .5, 5), this.materials.color(0xff5062)); horn.position.set(x, .1, 0); horn.rotation.z = x > 0 ? -.5 : .5; parts.add(horn); } break; }
-      case 'halo': { const ring = mesh(new THREE.TorusGeometry(.42, .06, 6, 16), this.materials.color(0xffe06b, { emissive: 0xcc9900, emissiveIntensity: 1.4 }), false); ring.rotation.x = Math.PI / 2; ring.position.y = .45; parts.add(ring); break; }
-      case 'crown': { const band = mesh(new THREE.CylinderGeometry(.42, .46, .22, 8), gold); parts.add(band); for (let i = 0; i < 5; i++) { const a = i / 5 * Math.PI * 2; const spike = mesh(new THREE.ConeGeometry(.08, .26, 4), gold); spike.position.set(Math.cos(a) * .4, .22, Math.sin(a) * .4); parts.add(spike); } break; }
-      case 'antenna': { const rod = mesh(new THREE.CylinderGeometry(.03, .03, .65, 4), dark, false); rod.position.y = .3; parts.add(rod); const tip = mesh(new THREE.SphereGeometry(.09, 6, 4), this.materials.color(0xff5062, { emissive: 0xaa1122, emissiveIntensity: 1.6 }), false); tip.position.y = .66; parts.add(tip); break; }
-      case 'tophat': { const brim = mesh(new THREE.CylinderGeometry(.62, .62, .06, 10), dark); parts.add(brim); const tube = mesh(new THREE.CylinderGeometry(.4, .42, .62, 10), dark); tube.position.y = .34; parts.add(tube); const ribbon = mesh(new THREE.CylinderGeometry(.43, .43, .12, 10), this.materials.color(0xff5062)); ribbon.position.y = .12; parts.add(ribbon); break; }
-    }
-    group.add(parts); return parts;
+    const parts=createWearableCosmetic('hat',hat,this.materials,color);group.add(parts);return parts;
+  }
+  addBoots(group, boots, color = 0x00ff00) {
+    const parts=createWearableCosmetic('boots',boots,this.materials,color);group.add(parts);return parts;
+  }
+  addAttachment(group, attachment, color = 0x0000ff) {
+    const parts=createWearableCosmetic('attachment',attachment,this.materials,color);group.add(parts);return parts;
   }
   createFactory(team, position) {
     const group = new THREE.Group(); group.position.copy(position); const color = this.teamColor(team);
-    const foundation = mesh(new THREE.BoxGeometry(8, 1.1, 7), this.materials.building('concrete')); foundation.position.y = .55; group.add(foundation);
-    const core = mesh(new THREE.BoxGeometry(5.2, 4.2, 4.4), this.materials.building('plating')); core.position.y = 2.65; group.add(core);
-    for (const x of [-2.9, 2.9]) for (const z of [-2.5, 2.5]) { const p = mesh(new THREE.BoxGeometry(.7, 5, .7), this.materials.teamTextured('tech_pillar', color)); p.position.set(x, 2.8, z); group.add(p); }
-    const roof = mesh(new THREE.CylinderGeometry(3.8, 3.8, .65, 8), this.materials.teamTextured('tech_roof', color)); roof.position.y = 5.05; group.add(roof);
-    const stripe = mesh(new THREE.BoxGeometry(5.26, .8, 4.46), this.materials.building('hazard')); stripe.position.y = 1.2; group.add(stripe);
-    const key = mesh(new THREE.TorusGeometry(.72, .2, 6, 10), this.materials.building('plating', { color: 0xd9a928, metalness: .8, roughness: .2 })); key.rotation.x = Math.PI / 2; key.position.set(0, 2.8, team === 'blue' ? -2.25 : 2.25); group.add(key);
+    let baseStyle = null;
+    try {
+      const raw = localStorage.getItem('destructo-save-v1');
+      if (raw) {
+        const data = JSON.parse(raw);
+        baseStyle = data.equipped?.teamBase;
+      }
+    } catch(e) {}
+
+    const isCustom = Boolean(baseStyle);
+    if (isCustom) {
+      const customBase = new THREE.Mesh(new THREE.ConeGeometry(3, 6, 8), new THREE.MeshBasicMaterial({ color: 0xff00ff }));
+      customBase.name = 'custom-base';
+      group.add(customBase);
+    }
+
+    const foundation = mesh(new THREE.BoxGeometry(8, 1.1, 7), this.materials.building('concrete')); foundation.position.y = .55; foundation.visible = !isCustom; group.add(foundation);
+    const core = mesh(new THREE.BoxGeometry(5.2, 4.2, 4.4), this.materials.building('plating')); core.position.y = 2.65; core.visible = !isCustom; group.add(core);
+    for (const x of [-2.9, 2.9]) for (const z of [-2.5, 2.5]) { const p = mesh(new THREE.BoxGeometry(.7, 5, .7), this.materials.teamTextured('tech_pillar', color)); p.position.set(x, 2.8, z); p.visible = !isCustom; group.add(p); }
+    const roof = mesh(new THREE.CylinderGeometry(3.8, 3.8, .65, 8), this.materials.teamTextured('tech_roof', color)); roof.position.y = 5.05; roof.visible = !isCustom; group.add(roof);
+    const stripe = mesh(new THREE.BoxGeometry(5.26, .8, 4.46), this.materials.building('hazard')); stripe.position.y = 1.2; stripe.visible = !isCustom; group.add(stripe);
+    const key = mesh(new THREE.TorusGeometry(.72, .2, 6, 10), this.materials.building('plating', { color: 0xd9a928, metalness: .8, roughness: .2 })); key.rotation.x = Math.PI / 2; key.position.set(0, 2.8, team === 'blue' ? -2.25 : 2.25); key.visible = !isCustom; group.add(key);
+    
     const entity = { id: `${team}-factory`, type: 'factory', team, group, hp: 900, maxHp: 900, radius: 4, dead: false };
     group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); this.scene.add(group); return entity;
   }
@@ -171,6 +201,35 @@ export class EntityFactory {
     const bands = [];
     for (let i = 0; i < 3; i++) { const band = mesh(new THREE.BoxGeometry(i === 0 ? 1.2 : .12, .08, i === 0 ? .12 : 1.2), bandMat); band.position.set(i === 1 ? -.38 : i === 2 ? .38 : 0, .58, 0); visual.add(band); bands.push(band); }
     if (type.tier >= 2) { const gem = mesh(new THREE.OctahedronGeometry(.2, 0), this.materials.color(0xffffff, { emissive: type.color, emissiveIntensity: 1.6 }), false); gem.position.y = .84; visual.add(gem); }
+
+    let customColors = null;
+    try {
+      const raw = localStorage.getItem('destructo-save-v1');
+      if (raw) {
+        const data = JSON.parse(raw);
+        customColors = data.equipped?.customCrate || data.customCrate;
+      }
+    } catch(e) {}
+    if (customColors) {
+      if (box && box.material) {
+        box.material = box.material.clone();
+        box.material.color = new THREE.Color(customColors.bodyColor || '#ff0000');
+      }
+      if (bands && bands.length > 0) {
+        bands.forEach(band => {
+          if (band.material) {
+            band.material = band.material.clone();
+            band.material.color = new THREE.Color(customColors.bandColor || '#00ff00');
+          }
+        });
+      }
+      const gem = visual.children.find(c => c.geometry instanceof THREE.OctahedronGeometry);
+      if (gem && gem.material) {
+        gem.material = gem.material.clone();
+        gem.material.color = new THREE.Color(customColors.gemColor || '#0000ff');
+      }
+    }
+
     const entity = { id: crypto.randomUUID(), type: 'crate', crateType: type, originalType: type, charged: type.tier >= 2, group, visual, box, bands, position: group.position, radius: .72, halfExtent: .575, mass: type.mass || 1, velocity: new THREE.Vector3(), angularVelocity: new THREE.Vector3(), carried: false, placed: false, solid: false, falling: false, physicsActive: false, grounded: true };
     group.userData.entity = entity; group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); this.scene.add(group); return entity;
   }
@@ -372,6 +431,7 @@ export class EntityFactory {
     // aura shells hug the torso and head through every lean, twist and squash
     if (e.bodyAura) { e.bodyAura.position.copy(e.body.position); e.bodyAura.rotation.copy(e.body.rotation); e.bodyAura.scale.copy(e.body.scale).multiplyScalar(1.18); }
     if (e.headAura) { e.headAura.position.copy(e.head.position); e.headAura.rotation.copy(e.head.rotation); e.headAura.scale.copy(e.head.scale).multiplyScalar(1.22); }
+    if(e.escortPanic){const tremble=Math.sin(time*32+phase),flail=Math.sin(time*9+phase);e.weaponGroup.visible=false;e.velocity.multiplyScalar(Math.pow(.015,dt));e.body.position.set(0,1.04+Math.abs(flail)*.05,0);e.body.rotation.set(.16,tremble*.045,flail*.08);e.head.position.set(0,2.02,0);e.head.rotation.set(-.15,Math.sin(time*13)*.48,tremble*.08);e.leftHand.position.set(-.72,1.92+flail*.16,.35);e.rightHand.position.set(.72,1.92-flail*.16,.35);e.leftBoot.position.set(-.38,.22,.13);e.rightBoot.position.set(.38,.22,-.08);if(e.scientistRig){e.scientistRig.backpack.rotation.set(-.08,0,tremble*.035);e.scientistRig.core.rotation.y=time*2.5;e.scientistRig.antennaTip.scale.setScalar(1+Math.sin(time*12)*.18)}return}
     if (e.state === 'victory') {
       const cycle = time * 12 + phase;
       const jumpHeight = Math.abs(Math.sin(cycle * 0.5)) * 0.45;
@@ -558,6 +618,7 @@ export class EntityFactory {
       : e.landTimer > 0 ? 1 - e.landImpact * (e.landTimer / .3) * .18 : 1;
     e.body.scale.y = lerp(e.body.scale.y, stretch, Math.min(1, dt * 12));
     e.body.scale.x = e.body.scale.z = lerp(e.body.scale.x, 1 + (1 - e.body.scale.y) * .6, Math.min(1, dt * 12));
+    if(e.scientistRig){const burden=Math.min(1,speed/(e.classDef?.speed||3.15)),sway=Math.sin(e.gaitPhase||phase)*.075*burden;e.body.rotation.x+=.12;e.head.rotation.x-=.06;e.scientistRig.backpack.rotation.set(-.05+sway*.25,0,-sway);e.scientistRig.core.rotation.y=time*2.2;e.scientistRig.core.rotation.x=time*.7;e.scientistRig.antennaTip.scale.setScalar(1+Math.sin(time*8+phase)*.14);e.weaponGroup.visible=false}
     const rings=e.weaponGroup.userData.auraRings||[];rings.forEach((ring,i)=>{ring.rotation.z=time*(2.5+i*1.7);ring.material.opacity=.4+Math.sin(time*11+i)*.28;});
     e.bodyAura.material.opacity=.5+Math.sin(time*3+phase)*.1;e.headAura.material.opacity=e.bodyAura.material.opacity;
   }

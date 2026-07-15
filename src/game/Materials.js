@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 const textureColors = { grass: ['#5cc24f', '#8ae06a', '#3f9c3f'], dirt: ['#a5673f', '#c98a55', '#7a4c31'], stone: ['#8d8ba1', '#b9b5c9', '#615f78'], water: ['#28b1e6', '#74e2e8', '#1a78b8'], metal: ['#7a8492', '#aeb6bf', '#4a5464'], wood: ['#9c5a30', '#c98846', '#65391f'], uniform: ['#c4c9c6', '#98a09e', '#e2ded2'] };
 export const BASE_TEXTURES = Object.freeze(Object.keys(textureColors));
-export const MAP_TEXTURES = Object.freeze(['asphalt','road_lines','neon_concrete','city_glass','urban_brick','corrugated_steel','rooftop','sidewalk','jungle_floor','tree_bark','moss_stone','root_mud','volcanic_rock','lava_crust','summit_stone','vehicle_metal']);
+export const MAP_TEXTURES = Object.freeze(['asphalt','road_lines','neon_concrete','city_glass','urban_brick','corrugated_steel','rooftop','sidewalk','jungle_floor','tree_bark','moss_stone','root_mud','volcanic_rock','lava_crust','summit_stone','vehicle_metal','gaia_blacksite_armor']);
 
 function makeCanvas(size = 128) { const canvas = document.createElement('canvas'); canvas.width = canvas.height = size; return [canvas, canvas.getContext('2d')]; }
 function seededRandom(seed) { return () => ((seed = (Math.imul(seed, 1664525) + 1013904223) | 0) >>> 0) / 4294967296; }
@@ -229,7 +229,8 @@ export class MaterialLibrary {
     }));
     await Promise.all(MAP_TEXTURES.map(async name => {
       try {
-        const t = await loader.loadAsync(`/assets/textures/maps/${name}.webp`);
+        const extension=name==='gaia_blacksite_armor'?'png':'webp';
+        const t = await loader.loadAsync(`/assets/textures/maps/${name}.${extension}`);
         t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
         t.anisotropy = Math.min(8, this.renderer.capabilities.getMaxAnisotropy()); this.textures[name] = t;
       } catch { this.textures[name] = fallbackTexture('stone'); }

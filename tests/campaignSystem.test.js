@@ -21,14 +21,17 @@ describe('campaign quest state',()=>{
     expect(quest.fail('SQUAD WIPED')).toBe(true);expect(quest.failed).toBe(true);expect(quest.advance()).toBe(false);expect(failed).toHaveBeenCalledWith('SQUAD WIPED');
   });
 
-  it('orders all five Gaia operations and models the ten-minute defense rules',()=>{
-    expect(Object.values(CAMPAIGN_MISSIONS).map(m=>m.order)).toEqual([1,2,3,4,5]);
+  it('orders all six Gaia operations and models the four-minute defense rules',()=>{
+    expect(Object.values(CAMPAIGN_MISSIONS).map(m=>m.order)).toEqual([1,2,3,4,5,6]);
     expect(CAMPAIGN_MISSIONS['gold-rush'].steps.map(s=>s.id)).toEqual(['eliminate-guards']);
     expect(CAMPAIGN_MISSIONS['gold-rush'].optionalObjectives).toEqual([expect.objectContaining({id:'build-five',goal:5})]);
     expect(CAMPAIGN_MISSIONS['golden-shield'].enemySquad).toHaveLength(10);
     expect(CAMPAIGN_MISSIONS['golden-shield'].startingSquad).toEqual(['heavy','heavy','heavy','heavy','heavy']);
     expect(CAMPAIGN_MISSIONS['golden-shield']).toMatchObject({startingWeapon:'machinegun',startingAmmo:300,turretRiderClass:'heavy'});
+    expect(CAMPAIGN_MISSIONS['golden-shield'].steps[0]).toMatchObject({goal:240,key:'04:00'});
     expect(CAMPAIGN_MISSIONS['golden-shield'].startingSquad.length+1).toBe(6);
+    expect(CAMPAIGN_MISSIONS['atlas-homecoming'].steps.map(step=>step.id)).toEqual(['locate-leodones','escort-leodones']);
+    expect(CAMPAIGN_MISSIONS['atlas-homecoming'].enemySquad.length).toBeGreaterThanOrEqual(16);
   });
 
   it('deploys five mobile gunners, a sixth turret rider, and an opening triple supply drop',()=>{

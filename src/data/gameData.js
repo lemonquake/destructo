@@ -1,3 +1,5 @@
+import { MARKETPLACE_COSMETICS } from './marketplaceData.js';
+
 export const TEAM = Object.freeze({ BLUE: 0x2fb4ff, RED: 0xff5062, YELLOW: 0xffd23f, GREEN: 0x59e065 });
 
 // ── Multi-team support (up to 10 player slots) ───────────────────────────────
@@ -268,31 +270,12 @@ export const RECIPES = Object.freeze([
 ]);
 
 // ── Cosmetics for the D-Build studio ─────────────────────────────────────────
-export const COSMETICS = Object.freeze([
-  { id: 'cap',     kind: 'hat',  name: 'Combat Cap',     price: 300 },
-  { id: 'helmet',  kind: 'hat',  name: 'Battle Helmet',  price: 500 },
-  { id: 'mohawk',  kind: 'hat',  name: 'Neon Mohawk',    price: 750 },
-  { id: 'horns',   kind: 'hat',  name: 'Demon Horns',    price: 900 },
-  { id: 'halo',    kind: 'hat',  name: 'Golden Halo',    price: 1200 },
-  { id: 'crown',   kind: 'hat',  name: 'Royal Crown',    price: 2000 },
-  { id: 'antenna', kind: 'hat',  name: 'Radio Antenna',  price: 400 },
-  { id: 'tophat',  kind: 'hat',  name: 'Fancy Top Hat',  price: 1500 },
-  { id: 'camo',    kind: 'skin', name: 'Jungle Camo',    price: 600 },
-  { id: 'tiger',   kind: 'skin', name: 'Tiger Stripes',  price: 800 },
-  { id: 'digital', kind: 'skin', name: 'Digital Camo',   price: 700 },
-  { id: 'hex',     kind: 'skin', name: 'Hex Mesh',       price: 900 },
-  { id: 'circuit', kind: 'skin', name: 'Circuit Board',  price: 1100 },
-  { id: 'scales',  kind: 'skin', name: 'Dragon Scales',  price: 1300 },
-  { id: 'dots',    kind: 'skin', name: 'Pop Dots',       price: 500 },
-  { id: 'urban',   kind: 'skin', name: 'Urban Camo',     price: 650 },
-  { id: 'leopard', kind: 'skin', name: 'Leopard Print',  price: 1000 },
-  { id: 'stripes', kind: 'skin', name: 'Racing Stripes', price: 550 },
-]);
+export const COSMETICS = MARKETPLACE_COSMETICS;
 
 export const SETTINGS_DEFAULTS = Object.freeze({ shadows: true, volume: .55, cameraShake: true, musicMuted: false, soundsMuted: false, mouseSensitivity: 1 });
 
 export const CAMPAIGN_DIMENSIONS = Object.freeze([
-  Object.freeze({ id: 'gaia', order: 1, name: 'Gaia', status: 'ACTIVE', subtitle: 'THE LIVING WAR WORLD', description: 'Five operations across scrapyards, military frontiers, storm dams and a volcanic foundry.', accent: '#55f08a', secondary: '#29b7ff', icon: '✶', missionIds: Object.freeze(['four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge']) }),
+  Object.freeze({ id: 'gaia', order: 1, name: 'Gaia', status: 'ACTIVE', subtitle: 'THE LIVING WAR WORLD', description: 'Six operations across scrapyards, military frontiers, storm dams, a volcanic foundry and the buried Atlas Blacksite.', accent: '#55f08a', secondary: '#29b7ff', icon: '✶', missionIds: Object.freeze(['four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge','atlas-homecoming']) }),
   Object.freeze({ id: 'cryon', order: 2, name: 'Cryon', status: 'INCOMING', subtitle: 'THE FROZEN MACHINE MOON', description: 'Glacier fortresses and ancient machines wait beyond the Gaia gate.', accent: '#74e8ff', secondary: '#a785ff', icon: '❄', missionIds: Object.freeze([]) }),
   Object.freeze({ id: 'pyra', order: 3, name: 'Pyra', status: 'LOCKED', subtitle: 'THE SUNKEN FIRE KINGDOM', description: 'A burning ocean dimension detected through unstable portal telemetry.', accent: '#ff6a35', secondary: '#ffd23f', icon: '◈', missionIds: Object.freeze([]) }),
 ]);
@@ -323,13 +306,13 @@ export const CAMPAIGN_MISSIONS = Object.freeze({
   }),
   'golden-shield': Object.freeze({
     id: 'golden-shield', order: 3, name: 'Operation: Golden Shield', type: 'campaign', mapId: 'gaia-bastion', reward: 1200, requires: 'gold-rush',
-    briefing: 'Hold Fort Aegis for ten minutes. Scrapjack raiders will steal the Golden Crate and run it across the river to a waiting DestroJet.',
-    objective: 'Defend the Golden Crate for 10:00. Do not let it reach the DestroJet.',
+    briefing: 'Hold Fort Aegis for four minutes. Scrapjack raiders will steal the Golden Crate and run it across the river to a waiting DestroJet.',
+    objective: 'Defend the Golden Crate for 04:00. Do not let it reach the DestroJet.',
     startingSquad: ['heavy','heavy','heavy','heavy','heavy'], startingWeapon: 'machinegun', startingAmmo: 300, turretRiderClass: 'heavy',
     enemySquad: ['scout','gunner','scout','medic','heavy','commando','scout','gunner','officer','sniper'],
-    rules: Object.freeze({ defenseSeconds: 600, reinforcementSeconds: 5, playerBaseInvulnerable: true, enemiesPerWave: 3, deathsPerWave: 3, supplyBurst: 3 }),
+    rules: Object.freeze({ defenseSeconds: 240, reinforcementSeconds: 5, playerBaseInvulnerable: true, enemiesPerWave: 3, deathsPerWave: 3, supplyBurst: 3 }),
     steps: Object.freeze([
-      Object.freeze({ id: 'defend-gold', title: 'HOLD THE GOLDEN LINE', instruction: 'Intercept thieves, recover dropped cargo, and survive until evacuation.', key: '10:00', target: 'goldenCrate', goal: 600 }),
+      Object.freeze({ id: 'defend-gold', title: 'HOLD THE GOLDEN LINE', instruction: 'Intercept thieves, recover dropped cargo, and survive until evacuation.', key: '04:00', target: 'goldenCrate', goal: 240 }),
     ]),
   }),
   stormbreak: Object.freeze({
@@ -354,9 +337,27 @@ export const CAMPAIGN_MISSIONS = Object.freeze({
       Object.freeze({ id: 'destroy-foundry', title: 'END THE PRIME FOUNDRY', instruction: 'Push through the opened blast lane and demolish the enemy factory.', key: 'FIRE', target: 'enemyFactory', goal: 1 }),
     ]),
   }),
+  'atlas-homecoming': Object.freeze({
+    id: 'atlas-homecoming', order: 6, name: 'Operation: Atlas Homecoming', type: 'campaign', mapId: 'gaia-blacksite', reward: 2800, requires: 'heart-of-the-forge',
+    briefing: 'Professor Leodones is trapped inside Atlas Blacksite with a backpack full of world-saving research. Find him, keep him alive, and escort him through the buried military complex to the DestroJet extraction circle.',
+    objective: 'Locate Professor Leodones, then escort him safely to the DestroJet.',
+    startingSquad: ['gunner','gunner','gunner','gunner','gunner'], startingWeapon: 'machinegun', startingAmmo: 500, startingGrenades: 2,
+    enemySquad: ['gunner','commando','sniper','heavy','officer','gunner','scout','explosives','medic','sniper','heavy','commando','gunner','officer','scout','explosives'],
+    rules: Object.freeze({ reinforcementSeconds: 5, playerBaseInvulnerable: true, enemyDrops: true, scientistHp: 520, scientistRegenPerSecond: 2.25, scientistRegenDelay: 4, escortSpeed: 3.15, waveSize: 4, deathsPerWave: 5, maxWaves: 8 }),
+    steps: Object.freeze([
+      Object.freeze({ id: 'locate-leodones', title: 'FIND PROFESSOR LEODONES', instruction: 'Push through Atlas Blacksite and reach the sealed research wing.', key: 'FOLLOW THE GOLDEN ARROW', target: 'scientist', goal: 1 }),
+      Object.freeze({ id: 'escort-leodones', title: 'ESCORT THE PROFESSOR HOME', instruction: 'Protect Leodones and guide him into the drop circle beside the DestroJet.', key: 'KEEP HIM CLOSE', target: 'extraction', goal: 1 }),
+    ]),
+  }),
 });
 
 export const MISSIONS = Object.freeze({
   skirmish: Object.freeze({ id: 'skirmish', name: 'Custom Match', type: 'skirmish', briefing: 'Build a battlefield, choose the rules, and let the mayhem begin.', objective: 'Eliminate all enemy teams', reward: 600 }),
   ...CAMPAIGN_MISSIONS,
 });
+
+export const GEAR = Object.freeze([
+  { id: 'magnet', name: 'MAGNETIC GLOVES', price: 900, currency: 'chips' },
+  { id: 'rearPlate', name: 'BALLISTIC REAR PLATE', price: 1100, currency: 'chips' },
+  { id: 'jetpack', name: 'ROCKET JETPACK', price: 100, currency: 'tickets' }
+]);

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { configureProjectileRig, createProjectileRig } from './ProjectileModels.js';
+import { MARKETPLACE_COSMETICS } from '../data/marketplaceData.js';
 
 const tube = (radius, length, sides = 8) => { const g = new THREE.CylinderGeometry(radius, radius, length, sides); g.rotateX(Math.PI / 2); return g; };
 const PROJECTILE_GEOS = Object.freeze({
@@ -61,7 +62,9 @@ export class CombatSystem {
     shooter.nextShotMultiplier=1;shooter.cloakTimer=0;shooter.recoil=Math.min(1,.35+(w.recoil||0)*.09);if(shooter.velocity&&w.recoil)shooter.velocity.addScaledVector(direction,-(w.recoil||0));this.playShotAudio(shooter);return true
   }
   playShotAudio(shooter){if(!this.audio||!shooter.group?.position)return;let soundName='pistol',rate=.85+Math.random()*.3;if(shooter.type==='turret'){soundName='turret';rate=.7+Math.random()*.15}else if(shooter.weaponId){if(shooter.weaponId==='uzi')soundName='uzi';else if(shooter.weaponId==='flamethrower'){soundName='turret';rate=1.6+Math.random()*.2}else if(shooter.weaponId==='railgun'){soundName='sniper';rate=.55}else if(shooter.weaponId==='freezeray'){soundName='sniper';rate=1.75}else if(shooter.weaponId==='cannon'){soundName='shotgun';rate=.45}else if(['machinegun','smg','rifle'].includes(shooter.weaponId))soundName='machinegun';else if(['shotgun','rocket','grenade'].includes(shooter.weaponId))soundName='shotgun';else if(shooter.weaponId==='grenadelauncher')soundName='grenade_launcher';else if(shooter.weaponId==='sniper')soundName='sniper';else if(['tesla','plasma'].includes(shooter.weaponId)){soundName='sniper';rate=1.35}}this.audio.play(soundName,shooter.group.position,rate)}
-  spawn(shooter,direction,w,muzzleIndex=0){const slot=(w.mine?this.freeMineSlots:this.freeSlots).pop();if(slot===undefined){this.projectileSpawnDenied++;return null}const p=this.pool[slot];p.active=true;this.activeSlots.add(slot);p.shooter=shooter;p.weapon=w;p.age=0;p.trailTimer=0;p.mine=Boolean(w.mine);p.maxAge=p.mine?12:Infinity;p.style=w.projectileStyle||'slug';p.scale=w.projectileScale||1;p.detail=null;if(p.mine)this.activeMines++;else this.activeCount++;
+  spawn(shooter,direction,w,muzzleIndex=0){
+    const equippedProj=shooter.projectileStyle;if(equippedProj){const cosmetic=MARKETPLACE_COSMETICS.find(item=>item.id===equippedProj),model=cosmetic?.visual?.model,style={laser:'lance',plasma:'plasma',bolt:'bolt',comet:'plasma',heart:'bolt'}[model]||'tracer';w={...w,projectileStyle:style,color:cosmetic?.visual?.primary||w.color}}
+    const slot=(w.mine?this.freeMineSlots:this.freeSlots).pop();if(slot===undefined){this.projectileSpawnDenied++;return null}const p=this.pool[slot];p.active=true;this.activeSlots.add(slot);p.shooter=shooter;p.weapon=w;p.age=0;p.trailTimer=0;p.mine=Boolean(w.mine);p.maxAge=p.mine?12:Infinity;p.style=w.projectileStyle||'slug';p.scale=w.projectileScale||1;p.detail=null;if(p.mine)this.activeMines++;else this.activeCount++;
     p.position.copy(this.muzzlePosition(shooter,muzzleIndex,p.position));if(p.mine){p.position.y=this.ground(p.position.x,p.position.z)+.12;p.velocity.set(0,0,0);p.scale*=2.2}else{const speed=w.bulletSpeed||0,spread=(w.spread||0)*PROJECTILE_SPREAD_SCALE;p.velocity.copy(direction).normalize();
       // spread is a cone half-angle in radians applied perpendicular to the shot —
       // never scaled by bullet speed, so the round always converges on the aim point

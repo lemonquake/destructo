@@ -72,7 +72,7 @@ export class NavGrid {
     }
     const circles = [...(world.destructibles || []), ...(world.interactiveStructures || []), ...Object.values(world.baseTurrets || {}), ...Object.values(world.factories || {})];
     for (const obstacle of circles) {
-      if (!obstacle || obstacle.dead || obstacle.colliderHandles?.length) continue;
+      if (!obstacle || obstacle.dead || obstacle.navigationIgnored || obstacle.colliderHandles?.length) continue;
       this.rasterizeCircle(obstacle.group.position.x, obstacle.group.position.z, obstacle.radius || 1);
     }
     if (world.cavePosition) this.rasterizeCircle(world.cavePosition.x, world.cavePosition.z, 4.5);
@@ -150,8 +150,12 @@ export class NavGrid {
   // pulling. Returns world waypoints, or null when no route is needed or
   // possible. When the goal is unreachable the best-effort prefix toward it
   // is returned instead of nothing — RTS units crowd the closest approach.
-  findPath(from, to, radius = BASE_CLEARANCE, maxExpansions = 9000) {
+  findPath(from, to, radius = BASE_CLEARANCE, maxExpansions = null) {
     this.ensureFresh();
+    // Huge campaign maps contain several times more cells than the original
+    // arenas. Scale the A* budget with grid width so valid long routes are not
+    // returned as short "best effort" prefixes before reaching their goal.
+    const expansionLimit=maxExpansions??Math.max(9000,this.size*128);
     const start = this.nearestFreeCell(this.cellX(from.x), this.cellZ(from.z));
     const goal = this.nearestFreeCell(this.cellX(to.x), this.cellZ(to.z));
     if (!start || !goal) return null;
@@ -171,7 +175,7 @@ export class NavGrid {
       if (closed[current] === stamp) continue;
       closed[current] = stamp;
       if (current === goalIdx) { found = true; best = current; break; }
-      if (++expansions > maxExpansions) break;
+      if (++expansions > expansionLimit) break;
       const h = heuristic(current);
       if (h < bestH) { bestH = h; best = current; }
       const cx = current % this.size, cz = (current / this.size) | 0;

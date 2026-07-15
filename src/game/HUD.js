@@ -98,7 +98,7 @@ export class HUD {
     [...this.el['builder-cells'].children].forEach((cell, i) => { const t = occupancy[i]; cell.className = t ? `filled ${t}` : ''; });
   }
   prompt(text) { this.el.interaction.textContent = text || ''; this.el.interaction.classList.toggle('hidden', !text); }
-  toast(text, bad = false) { clearTimeout(this.toastTimer); this.el.toast.textContent = text; this.el.toast.classList.remove('hidden'); this.el.toast.classList.toggle('bad', bad); this.toastTimer = setTimeout(() => this.el.toast.classList.add('hidden'), 1800); }
+  toast(text, bad = false) { clearTimeout(this.toastTimer); this.el.toast.textContent = text; this.el.toast.classList.remove('hidden'); if (this.el.toast.classList.toggle) { this.el.toast.classList.toggle('bad', bad); } else { if (bad) this.el.toast.classList.add('bad'); else this.el.toast.classList.remove('bad'); } this.toastTimer = setTimeout(() => this.el.toast.classList.add('hidden'), 1800); }
   damage() { const el = document.querySelector('#damage-flash'); el.style.opacity = '.72'; setTimeout(() => el.style.opacity = '0', 70); }
   // screen-centered combat reticle: the camera aims, the crosshair never moves.
   // It flares red over enemies, tightens when locked, and spreads with recoil/motion.

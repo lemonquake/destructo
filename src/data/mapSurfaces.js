@@ -123,6 +123,15 @@ export const MAP_SURFACE_THEMES = Object.freeze({
       ...[[-82,44],[84,38],[-77,-55],[78,-60]].map(([x,z],i)=>patch('dirt',[x,z],13,{repeat:[3,3],seed:165+i,color:0x76594c})),
     ],
   }),
+  'gaia-blacksite': Object.freeze({
+    base: { texture:'gaia_blacksite_armor', repeat:[12,18], color:0x8a9298, roughness:.78, metalness:.52 },
+    layers: [
+      rect('gaia_blacksite_armor',[0,0],[42,286],{repeat:[3,22],color:0xb6bdc1,roughness:.62,metalness:.65,offset:.025}),
+      rect('corrugated_steel',[-55,0],[58,258],{repeat:[5,20],color:0x78827f,offset:.03}),
+      rect('corrugated_steel',[55,0],[58,258],{repeat:[5,20],color:0x78827f,offset:.03}),
+      ...[-104,-52,0,52,104].map((z,i)=>rect(i%2?'neon_concrete':'gaia_blacksite_armor',[0,z],[154,22],{repeat:[12,2],color:i%2?0x66777d:0x8f989c,emissive:i%2?0x04262d:0x000000,emissiveIntensity:.28,offset:.04})),
+    ],
+  }),
 });
 
 export const surfaceTexturesForTheme = theme => [theme.base.texture, ...theme.layers.map(layer => layer.texture)];

@@ -95,13 +95,29 @@ describe('game data integrity', () => {
     expect(COSMETICS.filter(c => c.kind === 'skin').length).toBeGreaterThanOrEqual(8);
     for (const c of COSMETICS) expect(c.price).toBeGreaterThan(0);
   });
-  it('ships Custom Match plus the five ordered Gaia campaign missions', () => {
-    expect(Object.keys(MISSIONS)).toEqual(['skirmish','four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge']);
-    expect(Object.values(CAMPAIGN_MISSIONS).map(m=>m.mapId)).toEqual(['bootcamp','goldrush','gaia-bastion','storm-dam','sunforge']);
-    expect(CAMPAIGN_DIMENSIONS[0]).toMatchObject({id:'gaia',missionIds:['four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge']});
+  it('has expanded cosmetic categories including boots, attachments, projectiles, deathEffects, killEffects, and teamBase', () => {
+    expect(COSMETICS.filter(c => c.kind === 'boots').length).toBeGreaterThanOrEqual(8);
+    expect(COSMETICS.filter(c => c.kind === 'attachment').length).toBeGreaterThanOrEqual(8);
+    expect(COSMETICS.filter(c => c.kind === 'projectile').length).toBeGreaterThanOrEqual(5);
+    expect(COSMETICS.filter(c => c.kind === 'deathEffect').length).toBeGreaterThanOrEqual(5);
+    expect(COSMETICS.filter(c => c.kind === 'killEffect').length).toBeGreaterThanOrEqual(5);
+    expect(COSMETICS.filter(c => c.kind === 'teamBase').length).toBeGreaterThanOrEqual(4);
+    
+    const rocketJetpack = COSMETICS.find(c => c.id === 'rocket-jetpack');
+    expect(rocketJetpack).toBeDefined();
+    expect(rocketJetpack.currency).toBe('tickets');
+    expect(rocketJetpack.price).toBe(100);
+  });
+  it('ships Custom Match plus the six ordered Gaia campaign missions', () => {
+    expect(Object.keys(MISSIONS)).toEqual(['skirmish','four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge','atlas-homecoming']);
+    expect(Object.values(CAMPAIGN_MISSIONS).map(m=>m.mapId)).toEqual(['bootcamp','goldrush','gaia-bastion','storm-dam','sunforge','gaia-blacksite']);
+    expect(CAMPAIGN_DIMENSIONS[0]).toMatchObject({id:'gaia',missionIds:['four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge','atlas-homecoming']});
     expect(CAMPAIGN_MISSIONS['gold-rush'].requires).toBe('four-of-a-kind');
     expect(CAMPAIGN_MISSIONS['gold-rush'].maxPlayerDestructos).toBe(5);
-    expect(CAMPAIGN_MISSIONS['golden-shield'].rules).toMatchObject({defenseSeconds:600,reinforcementSeconds:5,enemiesPerWave:3,deathsPerWave:3,supplyBurst:3});
+    expect(CAMPAIGN_MISSIONS['golden-shield'].rules).toMatchObject({defenseSeconds:240,reinforcementSeconds:5,enemiesPerWave:3,deathsPerWave:3,supplyBurst:3});
+    expect(CAMPAIGN_MISSIONS['atlas-homecoming']).toMatchObject({order:6,requires:'heart-of-the-forge',startingWeapon:'machinegun',startingAmmo:500,startingGrenades:2});
+    expect(CAMPAIGN_MISSIONS['atlas-homecoming'].startingSquad).toHaveLength(5);
+    expect(CAMPAIGN_MISSIONS['atlas-homecoming'].rules).toMatchObject({reinforcementSeconds:5,enemyDrops:true,scientistHp:520,escortSpeed:3.15});
     expect(CAMPAIGN_MISSIONS['four-of-a-kind'].supplyDrops).toMatchObject({initial:6,additional:16,waveSize:2});
     for(const mission of Object.values(CAMPAIGN_MISSIONS)){expect(mission.steps.length).toBeGreaterThan(0);expect(mission.reward).toBeGreaterThan(0)}
   });

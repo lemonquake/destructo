@@ -72,7 +72,7 @@ describe('themed map roster', () => {
     for (const id of mapIds) {
       const theme = MAP_SURFACE_THEMES[id];
       expect(theme.layers.length).toBeGreaterThanOrEqual(4);
-      expect(['grass', 'dirt', 'stone']).toContain(theme.base.texture);
+      expect(available.has(theme.base.texture)).toBe(true);
       expect(surfaceTexturesForTheme(theme).every(texture => available.has(texture))).toBe(true);
       expect(theme.layers.every(layer => ['ribbon', 'patch', 'ring', 'rect'].includes(layer.kind))).toBe(true);
     }
@@ -83,9 +83,10 @@ describe('themed map roster', () => {
   });
 
   it('keeps campaign maps out of Custom Match while retaining authored sizes',()=>{
-    expect(Object.keys(CAMPAIGN_MAPS)).toEqual(['bootcamp','goldrush','gaia-bastion','storm-dam','sunforge']);
+    expect(Object.keys(CAMPAIGN_MAPS)).toEqual(['bootcamp','goldrush','gaia-bastion','storm-dam','sunforge','gaia-blacksite']);
     expect(CAMPAIGN_MAPS.bootcamp.bounds).toBeLessThan(CAMPAIGN_MAPS.goldrush.bounds);
     expect(CAMPAIGN_MAPS['gaia-bastion']).toMatchObject({hasWater:true,sizeClass:'LARGE'});
+    expect(CAMPAIGN_MAPS['gaia-blacksite']).toMatchObject({sizeClass:'HUGE',bounds:176,texture:'gaia_blacksite_armor'});
     expect(mapById('bootcamp')).toBe(CAMPAIGN_MAPS.bootcamp);
   });
 
