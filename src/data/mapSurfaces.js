@@ -75,6 +75,54 @@ export const MAP_SURFACE_THEMES = Object.freeze({
       ring('neon_concrete', [0, 0], 12.5, 15.5, { repeat: [3, 3], color: 0x745b8f, emissive: 0x29113f, emissiveIntensity: .25, offset: .032 }),
     ],
   }),
+  bootcamp: Object.freeze({
+    base: { texture: 'dirt', repeat: [10, 10], color: 0x827463, roughness: 1 },
+    layers: [
+      ribbon('corrugated_steel', 8, [[0, -58], [0, 58]], { repeat: [1, 9], color: 0x9aa0a0 }),
+      rect('metal', [0, 31], [28, 20], { repeat: [4, 3], color: 0x878b8b }),
+      rect('metal', [0, -31], [28, 20], { repeat: [4, 3], color: 0x878b8b }),
+      ...[[-22, 2], [22, -3]].map(([x, z], i) => patch('grass', [x, z], 12, { repeat: [3, 3], seed: 111 + i, color: 0x78936a })),
+    ],
+  }),
+  goldrush: Object.freeze({
+    base: { texture: 'dirt', repeat: [15, 15], color: 0x8f7657, roughness: 1 },
+    layers: [
+      ribbon('summit_stone', 13, [[0, -102], [-14, -55], [8, -8], [-10, 42], [0, 102]], { repeat: [1, 13], color: 0xb0a289 }),
+      ribbon('dirt', 8, [[-75, -70], [-42, -35], [-28, 10], [-64, 66]], { repeat: [1, 10], color: 0xa17d52 }),
+      ribbon('dirt', 8, [[75, -70], [42, -35], [28, 10], [64, 66]], { repeat: [1, 10], color: 0xa17d52 }),
+      patch('metal', [0, 79], 24, { repeat: [5, 5], seed: 121, color: 0x9c9b92 }),
+      patch('neon_concrete', [0, -78], 20, { repeat: [4, 4], seed: 122, color: 0xb3ad95 }),
+    ],
+  }),
+  'gaia-bastion': Object.freeze({
+    base: { texture: 'grass', repeat: [18, 18], color: 0x718260, roughness: 1 },
+    layers: [
+      ribbon('asphalt', 12, [[0,-130],[0,-72],[-18,-30],[-18,0],[-6,48],[0,130]], { repeat:[1,15], color:0x9b9fa0 }),
+      ribbon('road_lines', 2.2, [[0,-130],[0,-72],[-18,-30],[-18,0],[-6,48],[0,130]], { repeat:[1,14], offset:.025 }),
+      ...[[-57,-28,26],[55,22,28],[-58,62,20],[61,-66,22]].map(([x,z,r],i)=>patch('dirt',[x,z],r,{repeat:[4,4],seed:141+i,color:0x956f4e})),
+      rect('metal',[0,-101],[54,38],{repeat:[7,5],color:0x858b8c}),
+      rect('neon_concrete',[0,101],[50,36],{repeat:[6,4],color:0xa9aa9e}),
+    ],
+  }),
+  'storm-dam': Object.freeze({
+    base: { texture: 'dirt', repeat:[18,18], color:0x596b66, roughness:1 },
+    layers: [
+      ribbon('asphalt',10,[[-80,115],[-52,62],[-18,20],[22,-20],[54,-64],[78,-116]],{repeat:[1,16],color:0x88969a}),
+      ribbon('water',22,[[-132,5],[-70,2],[0,4],[70,1],[132,5]],{repeat:[12,2],color:0x55a8ba,transparent:true,opacity:.62,depthWrite:false,offset:.035}),
+      rect('concrete',[0,4],[54,24],{repeat:[7,3],color:0x949c9d,offset:.05}),
+      ...[[-55,-42],[0,-57],[55,-42]].map(([x,z],i)=>patch('neon_concrete',[x,z],11,{repeat:[3,3],seed:151+i,color:0x6e9ba5,emissive:0x073b51,emissiveIntensity:.3})),
+    ],
+  }),
+  sunforge: Object.freeze({
+    base: { texture:'dirt', repeat:[18,18], color:0x5f5553, roughness:1 },
+    layers: [
+      ...[-2.35,-.78,.78,2.35].map((angle,i)=>ribbon('metal',10,[[Math.cos(angle)*132,Math.sin(angle)*132],[Math.cos(angle)*62,Math.sin(angle)*62],[Math.cos(angle)*30,Math.sin(angle)*30]],{repeat:[1,13],color:0x828587,offset:i*.003})),
+      ring('lava_crust',[0,0],29,51,{repeat:[7,7],emissive:0x651300,emissiveIntensity:.65}),
+      ring('metal',[0,0],20,28,{repeat:[5,5],color:0x85878b,offset:.025}),
+      patch('neon_concrete',[0,0],19,{repeat:[4,4],seed:161,color:0x787275,emissive:0x421006,emissiveIntensity:.25}),
+      ...[[-82,44],[84,38],[-77,-55],[78,-60]].map(([x,z],i)=>patch('dirt',[x,z],13,{repeat:[3,3],seed:165+i,color:0x76594c})),
+    ],
+  }),
 });
 
 export const surfaceTexturesForTheme = theme => [theme.base.texture, ...theme.layers.map(layer => layer.texture)];

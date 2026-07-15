@@ -69,12 +69,44 @@ export const DOMINATION_MAPS = Object.freeze({
   }),
 });
 
+// Authored campaign battlefields stay out of GAME_MODES so they never appear
+// in Custom Match map selection.
+export const CAMPAIGN_MAPS = Object.freeze({
+  bootcamp: Object.freeze({
+    id: 'bootcamp', mode: 'campaign', title: 'SCRAPYARD ZERO', tag: 'ASSEMBLY TRAINING GROUND',
+    description: 'A compact junkyard proving ground built around one D-Builder and a very unlucky enemy outpost.',
+    accent: '#54f07b', icon: '⚙️', texture: 'corrugated_steel', weather: 'CLEAR WITH EXPLOSIONS',
+    maxTeams: 2, sizeClass: 'SMALL', bounds: 68, baseRadius: 49, surfaceScale: 2,
+  }),
+  goldrush: Object.freeze({
+    id: 'goldrush', mode: 'campaign', title: 'GILDED GULCH', tag: 'FORTRESS EXTRACTION',
+    description: 'A medium canyon scrapyard with a fortified northern depot and enough cover for a very loud heist.',
+    accent: '#ffd23f', icon: '✦', texture: 'summit_stone', weather: 'GOLD DUST',
+    maxTeams: 2, sizeClass: 'MEDIUM', bounds: 112, baseRadius: 84, surfaceScale: 2.4,
+  }),
+  'gaia-bastion': Object.freeze({
+    id: 'gaia-bastion', mode: 'campaign', title: 'FORT AEGIS', tag: 'GOLDEN CRATE SIEGE',
+    description: 'A fortified river valley with a military base, destructible barracks, dirt fields, bear territory, bridge crossings, hidden red caches and an enemy DestroJet runway.',
+    accent: '#ffd23f', icon: '✈', texture: 'grass', weather: 'WARFRONT SUNSET', maxTeams: 2, sizeClass: 'LARGE', bounds: 138, baseRadius: 108, surfaceScale: 1, hasWater: true,
+  }),
+  'storm-dam': Object.freeze({
+    id: 'storm-dam', mode: 'campaign', title: 'TEMPEST DAM', tag: 'HYDROELECTRIC SABOTAGE',
+    description: 'A rain-dark dam complex of spillways, turbine halls, flooded service roads, high catwalks and three lightning-fed relay terraces.',
+    accent: '#65e9ff', icon: '⚡', texture: 'concrete', weather: 'ELECTRIC MONSOON', maxTeams: 2, sizeClass: 'LARGE', bounds: 132, baseRadius: 104, surfaceScale: 1, hasWater: true,
+  }),
+  sunforge: Object.freeze({
+    id: 'sunforge', mode: 'campaign', title: 'THE SUNFORGE', tag: 'VOLCANIC FOUNDRY ASSAULT',
+    description: 'A vast caldera factory surrounded by lava trenches, coolant canals, armored blast walls, furnace towers and smuggler tunnels.',
+    accent: '#ff6a2b', icon: '✹', texture: 'volcanic_rock', weather: 'REACTOR ASHFALL', maxTeams: 2, sizeClass: 'LARGE', bounds: 140, baseRadius: 110, surfaceScale: 1,
+  }),
+});
+
 export const GAME_MODES = Object.freeze({
   deathmatch: Object.freeze({ id: 'deathmatch', title: 'DEATHMATCH', kicker: 'LAST TEAM STANDING', description: 'Destroy bases, wipe squads, and survive sudden death.', mapIds: Object.keys(MAPS) }),
   domination: Object.freeze({ id: 'domination', title: 'TOWER DOMINION', kicker: 'FREE FOR ALL · CAPTURE · SCORE', description: 'Every team is hostile. Stand on a tower pedestal for 5 seconds to claim it; every held tower generates points.', mapIds: Object.keys(DOMINATION_MAPS) }),
 });
 
-export const ALL_MAPS = Object.freeze({ ...MAPS, ...DOMINATION_MAPS });
+export const ALL_MAPS = Object.freeze({ ...MAPS, ...DOMINATION_MAPS, ...CAMPAIGN_MAPS });
 export const mapsForMode = modeId => (GAME_MODES[modeId] || GAME_MODES.deathmatch).mapIds.map(id => ALL_MAPS[id]);
 
 export const DEFAULT_MAP_ID = 'crossroads';

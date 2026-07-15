@@ -93,6 +93,7 @@ export class HUD {
     if (player.buffs?.damage > 0) buffs.push(`DMG ${Math.ceil(player.buffs.damage)}s`);
     if (player.buffs?.rapid > 0) buffs.push(`RAPID ${Math.ceil(player.buffs.rapid)}s`);
     if (player.shield > 0) buffs.push('SHIELD');
+    if (player.carriedCrate?.questHeavy) buffs.push('HEAVY CARGO · SPEED 50% · NO JUMP');
     this.el['buff-readout'].textContent = buffs.join(' · ');
     [...this.el['builder-cells'].children].forEach((cell, i) => { const t = occupancy[i]; cell.className = t ? `filled ${t}` : ''; });
   }

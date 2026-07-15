@@ -47,6 +47,13 @@ describe('crate drop scheduling', () => {
     expect(scheduler.next()).toMatchObject({ zone: zones[1], type: 'brown', seconds: 2.25 });
   });
 
+  it('supports the Fort Aegis three-crate supply burst',()=>{
+    const zone={id:'aegis-supply-depot',kind:'team',types:['brown'],burst:3,interval:{minSeconds:18,maxSeconds:24}},scheduler=new CrateDropScheduler([zone],()=>0),spawn=vi.fn(()=>({}));
+    scheduler.update(18,()=>0,spawn);
+    expect(spawn).toHaveBeenCalledTimes(3);
+    expect(spawn.mock.calls.every(([calledZone,type])=>calledZone===zone&&type==='brown')).toBe(true);
+  });
+
   it('drops seven common crates at every dropspot before scheduled drops', () => {
     const zones = [{ id: 'home' }, { id: 'relay' }, { id: 'far-relay' }];
     const world = { crateDropZones: zones, airdropCrate: vi.fn(() => ({})) };

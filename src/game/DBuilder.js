@@ -90,6 +90,7 @@ export class DBuilder {
   // AI strategies deliberately converge on a requested recipe: flat for weapons,
   // towers for Destructos and eventually the complete tank cube.
   place(crate, from = null, strategy = 'nearest', targetCol = null) {
+    if(crate?.noBuilder||crate?.questItem)return false;
     const heights = this.heights();
     let best = (targetCol !== null && targetCol >= 0 && targetCol < PAD_COLUMNS && heights[targetCol] < PAD_HEIGHT) ? targetCol : -1;
     if (best < 0) {

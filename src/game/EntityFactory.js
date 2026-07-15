@@ -46,16 +46,22 @@ export class EntityFactory {
     const leftHand = mesh(GEO.hand, skin), rightHand = mesh(GEO.hand, skin); leftHand.position.set(-.78, 1.24, .12); rightHand.position.set(.78, 1.24, .12); group.add(leftHand, rightHand);
     const leftBoot = mesh(GEO.boot, dark), rightBoot = mesh(GEO.boot, dark); leftBoot.position.set(-.33, .22, .03); rightBoot.position.set(.33, .22, .03); group.add(leftBoot, rightBoot);
     const weaponGroup = new THREE.Group(); weaponGroup.position.set(.72, 1.22, .72); group.add(weaponGroup);
+    const jetpackRig=opts.jetpack?this.createJetpackRig():null;if(jetpackRig)group.add(jetpackRig.group);
     if (opts.hat) this.addHat(group, opts.hat, color);
     const grade = opts.grade || 'normal';
     if (grade === 'elite') { const stripe = mesh(new THREE.TorusGeometry(.68, .07, 6, 14), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .6 })); stripe.rotation.x = Math.PI / 2; stripe.position.y = 1.55; group.add(stripe); }
     if (grade === 'special') { group.scale.setScalar(1.12); const core = mesh(new THREE.OctahedronGeometry(.22, 0), this.materials.color(0xa4ecff, { emissive: 0x2fa0e0, emissiveIntensity: 1.5 }), false); core.position.set(0, 1.35, .58); group.add(core); const halo = mesh(new THREE.TorusGeometry(.92, .05, 6, 20), this.materials.color(0x9fe8ff, { emissive: 0x2fa0e0, emissiveIntensity: 1.1 }), false); halo.rotation.x = Math.PI / 2; halo.position.y = .12; group.add(halo); }
     const primaryWeaponId=def.weapon==='pistol'?null:def.weapon;
-    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
+    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, jetpack:Boolean(opts.jetpack), jetpackRig, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, jetpackBurn:0, jetpackActive:false, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
     this.setWeaponModel(entity, def.weapon, WEAPONS[def.weapon]);
     this.applyPassive(entity);
     if(entity.primaryWeaponId)entity.primaryWeapon=entity.weapon;
     group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); group.userData.entity = entity; this.scene.add(group); return entity;
+  }
+  createJetpackRig(){
+    const group=new THREE.Group();group.name='rocket-jetpack';group.position.set(0,1.33,-.5);const metal=this.materials.building('vehicle_metal',{metalness:.85,roughness:.24}),trim=this.materials.color(0xffd23f,{emissive:0x8b5700,emissiveIntensity:.45,metalness:.8}),flameMat=this.materials.color(0x55d9ff,{emissive:0x28b9ff,emissiveIntensity:2.2,transparent:true,opacity:.9});const flames=[];
+    for(const x of [-.33,.33]){const tank=mesh(new THREE.CylinderGeometry(.22,.27,.9,8),metal);tank.position.set(x,0,0);group.add(tank);const cap=mesh(new THREE.SphereGeometry(.23,7,5),trim);cap.scale.y=.55;cap.position.set(x,.47,0);group.add(cap);const nozzle=mesh(new THREE.CylinderGeometry(.16,.22,.28,7),trim);nozzle.position.set(x,-.56,0);group.add(nozzle);const flame=mesh(new THREE.ConeGeometry(.17,.9,7),flameMat.clone(),false);flame.position.set(x,-1.05,0);flame.rotation.z=Math.PI;flame.visible=false;group.add(flame);flames.push(flame)}
+    const brace=mesh(new THREE.BoxGeometry(.92,.18,.22),trim);brace.position.y=.15;group.add(brace);return{group,flames};
   }
   applyPassive(e) {
     switch (e.passive?.id) {
@@ -343,13 +349,15 @@ export class EntityFactory {
     return entity.portraitURL;
   }
   createWildlife(kind, position) {
-    const group = new THREE.Group(); group.position.copy(position); let hp = kind === 'wolf' ? 85 : kind === 'slime' ? 70 : 45, radius = .8, speed = kind === 'wolf' ? 5.2 : kind === 'slime' ? 2.8 : 1.8;
+    const group = new THREE.Group(); group.position.copy(position); let hp = kind === 'bear' ? 240 : kind === 'wolf' ? 85 : kind === 'slime' ? 70 : 45, radius = kind === 'bear' ? 1.35 : .8, speed = kind === 'bear' ? 4.4 : kind === 'wolf' ? 5.2 : kind === 'slime' ? 2.8 : 1.8;
     if (kind === 'sheep') {
       const wool = mesh(new THREE.IcosahedronGeometry(.85, 1), this.materials.color(0xeee8cf)); wool.scale.set(1.3, .85, .85); wool.position.y = .9; group.add(wool);
       const head = mesh(new THREE.BoxGeometry(.48, .52, .55), this.materials.color(0x383946)); head.position.set(0, .92, .85); group.add(head);
       for (const x of [-.55, .55]) for (const z of [-.4, .42]) { const leg = mesh(new THREE.CylinderGeometry(.09, .11, .65, 5), this.materials.color(0x343440)); leg.position.set(x, .32, z); group.add(leg); }
     } else if (kind === 'wolf') {
       const fur = this.materials.color(0x59606b); const body = mesh(new THREE.CapsuleGeometry(.45, 1.05, 3, 6), fur); body.rotation.x = Math.PI / 2; body.position.y = .72; group.add(body); const head = mesh(new THREE.ConeGeometry(.52, .9, 5), fur); head.rotation.x = Math.PI / 2; head.position.set(0, .95, .92); group.add(head); for (const x of [-.28, .28]) { const ear = mesh(new THREE.ConeGeometry(.14, .4, 4), this.materials.color(0x30333b)); ear.position.set(x, 1.4, .63); group.add(ear); }
+    } else if (kind === 'bear') {
+      const fur=this.materials.color(0x6b3f25,{roughness:.95}),muzzle=this.materials.color(0xb78254);const body=mesh(new THREE.IcosahedronGeometry(1.2,1),fur);body.scale.set(1.15,.85,1.45);body.position.y=1.15;group.add(body);const head=mesh(new THREE.IcosahedronGeometry(.72,1),fur);head.position.set(0,1.55,1.25);group.add(head);const snout=mesh(new THREE.CapsuleGeometry(.28,.45,3,7),muzzle);snout.rotation.x=Math.PI/2;snout.position.set(0,1.38,1.83);group.add(snout);for(const x of [-.43,.43]){const ear=mesh(new THREE.SphereGeometry(.22,7,5),fur);ear.position.set(x,2.08,1.2);group.add(ear)}for(const x of [-.67,.67])for(const z of [-.7,.72]){const leg=mesh(new THREE.CylinderGeometry(.2,.28,.9,7),fur);leg.position.set(x,.48,z);group.add(leg)}
     } else {
       const slime = mesh(new THREE.SphereGeometry(.82, 8, 6), this.materials.color(0x76e06c, { emissive: 0x173f1b, emissiveIntensity: .35 })); slime.scale.y = .72; slime.position.y = .58; group.add(slime); for (const x of [-.24, .24]) { const eye = mesh(new THREE.SphereGeometry(.1, 6, 4), new THREE.MeshBasicMaterial({ color: 0xffffe8 }), false); eye.position.set(x, .78, .68); group.add(eye); }
     }
@@ -358,6 +366,7 @@ export class EntityFactory {
   animateUnit(e, time, dt) {
     if (e.dead) return;
     const phase = e.animationSeed || 0, auraPulse = 1 + Math.sin(time * 4 + phase) * .08;
+    if(e.jetpackRig){for(const [i,flame] of e.jetpackRig.flames.entries()){flame.visible=Boolean(e.jetpackActive);if(flame.visible){const pulse=1+Math.sin(time*36+i*2.4)*.2;flame.scale.set(.85+.15*pulse,pulse, .85+.15*pulse);flame.material.opacity=.68+Math.sin(time*29+i)*.22}}e.jetpackRig.group.rotation.z=THREE.MathUtils.lerp(e.jetpackRig.group.rotation.z,e.jetpackActive?Math.sin(time*24)*.025:0,Math.min(1,dt*12))}
     if (e.auraGlow) { e.auraGlow.material.opacity = .58 + Math.sin(time * 4 + phase) * .12; e.auraGlow.scale.set(4.8 * auraPulse, 5.4 * auraPulse, 1); }
     if (e.auraRing) { e.auraRing.scale.setScalar(auraPulse); e.auraRing.rotation.z = time * .28 + phase; }
     // aura shells hug the torso and head through every lean, twist and squash

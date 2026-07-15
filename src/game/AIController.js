@@ -118,6 +118,7 @@ export class AIController {
   update(agent, dt, foes) {
     if (agent.dead || agent.player || agent.type==='vehicle') return;
     agent.fireCooldown = Math.max(0, agent.fireCooldown - dt);
+    if(agent.missionScripted)return;
     const brain=this.brainFor(agent.team);if(brain.lastTick!==this.world.elapsed){brain.lastTick=this.world.elapsed;brain.reassessIn=Math.max(0,(brain.reassessIn||0)-dt);brain.guardRefreshIn=Math.max(0,(brain.guardRefreshIn||0)-dt);if(brain.baseThreat)brain.baseThreat.timer=Math.max(0,brain.baseThreat.timer-dt);}
     if(brain.suddenDeath)return this.panic(agent,dt,foes,brain);
     const mounted=agent.mountedTurret||agent.mountedBunker||agent.mountedMotorcycle;
@@ -141,7 +142,7 @@ export class AIController {
     // it only picks up a weapon when there is nobody left to heal
     if (!mounted && this.healerDuty(agent, dt)) return;
     // a base under siege drafts defenders before personal grudges are settled
-    if (!mounted && agent.type === 'unit' && this.defendBase(agent, dt, foes, brain)) return;
+    if (!mounted && agent.type === 'unit' && !agent.ignoreBases && this.defendBase(agent, dt, foes, brain)) return;
     // aggro outranks every doctrine duty below: a hostile inside the acquire
     // radius is fought to the death, no matter what the agent was doing
     const aggro = this.updateAggro(agent, foes);
@@ -470,7 +471,7 @@ export class AIController {
       this.moveToward(agent, away, dt, 1.1); return true;
     }
     const outsideBuild = c => !Object.values(this.builders).some(b => b.distanceTo(c.group.position) < 4.8);
-    const crates = this.world.crates.filter(c => !c.carried && !c.placed && !c.falling && outsideBuild(c));
+    const crates = this.world.crates.filter(c => !c.carried && !c.placed && !c.falling && !c.noAI && !c.questItem && outsideBuild(c));
     const crate = this.closest(agent, crates); if (!crate) return false;
     const dist = crate.group.position.distanceTo(agent.group.position);
     if (dist < 1.9) { this.onMaterialize(agent, crate); return true; }
@@ -555,7 +556,7 @@ export class AIController {
       dir.normalize(); agent.velocity.lerp(dir.multiplyScalar(agent.classDef.speed), dt * 4); this.move(agent, dt); return true;
     }
     if (builder.count() >= 12) { if(options.goal==='tank'&&builder.recipe()?.id==='tank')builder.manufacture();return false; }
-    let candidates=this.world.crates.filter(c=>!c.carried&&!c.placed&&!c.falling);
+    let candidates=this.world.crates.filter(c=>!c.carried&&!c.placed&&!c.falling&&!c.noAI&&!c.questItem);
     if(options.center)candidates=candidates.filter(c=>c.group.position.distanceTo(options.center)<(options.maxRadius||Infinity));
     if(options.maxRadius&&!options.center)candidates=candidates.filter(c=>c.group.position.distanceTo(agent.group.position)<options.maxRadius);
     if(options.rareFirst)candidates.sort((a,b)=>(b.originalType?.tier||b.crateType.tier)-(a.originalType?.tier||a.crateType.tier));

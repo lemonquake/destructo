@@ -7,11 +7,11 @@ import { MAP_SURFACE_THEMES } from '../data/mapSurfaces.js';
 import { NavGrid } from './Navigation.js';
 
 export class World {
-  constructor(scene, materials, factory, mapId = 'crossroads', gameMode = 'deathmatch') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.gameMode = gameMode; this.hasWater = false; this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.dominationTowers = []; this.colliders = []; this.secretPlaces = []; this.teamCompounds = {}; this.bounds = gameMode === 'domination' ? 96 : (this.map.bounds || 234); }
+  constructor(scene, materials, factory, mapId = 'crossroads', gameMode = 'deathmatch') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.gameMode = gameMode; this.hasWater = Boolean(this.map.hasWater); this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.dominationTowers = []; this.colliders = []; this.secretPlaces = []; this.missionTargets=[]; this.teamCompounds = {}; this.bounds = gameMode === 'domination' ? 96 : (this.map.bounds || 234); }
   // teams: [{id, color, dark}] — a base + builder pad is raised for each one, spread on a ring
   build(teams = [{ id: 'blue', color: 0x2fb4ff, dark: 0x11638f }, { id: 'red', color: 0xff5062, dark: 0x8e2634 }]) {
     if(this.gameMode==='deathmatch'&&teams.length>(this.map.maxTeams||9))throw new RangeError(`${this.map.title} supports at most ${this.map.maxTeams} teams`);
-    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
+    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012],bootcamp:[0x5f8f9c,0x8cb0a6,.011],goldrush:[0x72502c,0xb38d55,.009],'gaia-bastion':[0x704d3d,0xa47d63,.007],'storm-dam':[0x263f52,0x597985,.012],sunforge:[0x30191c,0x5d2721,.014]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
     this.scene.background = new THREE.Color(atmos[0]); this.scene.fog = new THREE.FogExp2(atmos[1], this.gameMode==='deathmatch'?atmos[2]*.42:atmos[2]);
     this.teams = teams;
     // base ring: player team lands at the bottom of the map, others spread evenly
@@ -36,7 +36,7 @@ export class World {
       this.createTeamCompound(t,base);
       this.factories[t.id] = this.factory.createFactory(t.id, base);
       const toCenter = base.clone().multiplyScalar(-1).setY(0).normalize();
-      const side=new THREE.Vector3(-toCenter.z,0,toCenter.x);const turretPos=base.clone().addScaledVector(toCenter,9).addScaledVector(side,7.5);turretPos.y=this.heightAt(turretPos.x,turretPos.z);this.baseTurrets[t.id]=this.factory.createBaseTurret(t.id,turretPos);
+      const side=new THREE.Vector3(-toCenter.z,0,toCenter.x);if(this.gameMode!=='campaign'){const turretPos=base.clone().addScaledVector(toCenter,9).addScaledVector(side,7.5);turretPos.y=this.heightAt(turretPos.x,turretPos.z);this.baseTurrets[t.id]=this.factory.createBaseTurret(t.id,turretPos);}
       const pad = base.clone().addScaledVector(toCenter, 11).addScaledVector(side, -8); pad.y = this.heightAt(pad.x, pad.z) + .18;
       this.spawnPositions[t.id] = pad;
       if(this.gameMode!=='domination'){this.builderPositions[t.id] = pad;this.createBuilderPad(pad, t.color, t.dark);}
@@ -44,9 +44,9 @@ export class World {
     // legacy two-team aliases used by the mission scripts
     this.blueFactory = this.factories[teams[0].id]; this.redFactory = this.factories[teams[1]?.id] || this.factories[teams[0].id];
     this.builderPosition = this.builderPositions[teams[0].id];
-    this.createCave(this.cavePosition);
+    if(this.gameMode!=='campaign')this.createCave(this.cavePosition);
     this.setupCrateDropZones();
-    this.dropOpeningCrates(this.map.id==='crown'?3:7);
+    if(this.gameMode!=='campaign')this.dropOpeningCrates(this.map.id==='crown'?3:7);
     this.populate(); this.buildStructures(); this.buildInteractives(); this.buildDecorations(); this.buildThemedContent(); if(this.gameMode==='deathmatch')this.buildSecretPlaces(); if(this.gameMode==='domination')this.createDominationTowers();
     this.nav = new NavGrid(this); this.nav.rebuild(); return this;
   }
@@ -224,6 +224,16 @@ export class World {
   }
   createCave(position) { const group = new THREE.Group(); group.position.copy(position); const dark = new THREE.MeshBasicMaterial({ color: 0x111522 }); const mouth = new THREE.Mesh(new THREE.CircleGeometry(3.15, 12), dark); mouth.position.set(0, 2.75, .12); group.add(mouth); const arch = new THREE.Mesh(new THREE.TorusGeometry(3.35, .82, 6, 14, Math.PI), this.materials.building('cobble')); arch.position.y = 2.65; arch.castShadow = true; group.add(arch); for (const x of [-2.2, 2.2]) { const pillar = new THREE.Mesh(new THREE.CylinderGeometry(.82, 1.05, 3.1, 7), this.materials.building('cobble')); pillar.position.set(x, 1.45, 0); pillar.castShadow = true; group.add(pillar); } const crystalMat = this.materials.building('crystal', { emissive: 0x1780b0, emissiveIntensity: .9 }); for (const [x, z, s] of [[-4, -1, .7], [3.8, .3, .9], [4.5, -1.4, .55]]) { const c = new THREE.Mesh(new THREE.ConeGeometry(.48, 1.7, 5), crystalMat); c.position.set(x, .85, z); c.scale.setScalar(s); group.add(c); } const ring = new THREE.Mesh(new THREE.RingGeometry(5.1, 5.45, 40), new THREE.MeshBasicMaterial({ color: 0x5bd9ff, transparent: true, opacity: .5, side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -4 })); ring.rotation.x = -Math.PI / 2; ring.position.y = .1; group.add(ring); this.caveRing = ring; this.caveGroup = group; this.scene.add(group); }
   planCrateDropZones() {
+    if(this.gameMode==='campaign'){
+      if(this.map.id==='goldrush'){
+        const team=this.teams[0],base=this.basePositions[team.id],toCenter=base.clone().multiplyScalar(-1).setY(0).normalize(),side=new THREE.Vector3(-toCenter.z,0,toCenter.x);
+        this.crateDropZonePlans=[{id:'campaign-depot',label:'HOME SUPPLY DROP',kind:'team',teamId:team.id,color:team.color,position:base.clone().addScaledVector(toCenter,31).addScaledVector(side,20),types:['brown'],radius:4.2,interval:{minSeconds:18,maxSeconds:24}}];
+      }else if(this.map.id==='gaia-bastion'){
+        const team=this.teams[0],base=this.basePositions[team.id],toCenter=base.clone().multiplyScalar(-1).setY(0).normalize(),side=new THREE.Vector3(-toCenter.z,0,toCenter.x);
+        this.crateDropZonePlans=[{id:'aegis-supply-depot',label:'FORT AEGIS TRIPLE SUPPLY',kind:'team',teamId:team.id,color:team.color,position:base.clone().addScaledVector(toCenter,34).addScaledVector(side,-24),types:['brown'],radius:5.2,burst:3,interval:{minSeconds:18,maxSeconds:24}}];
+      }else this.crateDropZonePlans=[];
+      return;
+    }
     if(this.gameMode==='domination'){
       this.crateDropZonePlans=[
         ['neutral-west','WESTERN CACHE',-31,0],
@@ -258,7 +268,7 @@ export class World {
       zone.visual = this.createCrateDropZoneVisual(zone);
       return zone;
     });
-    this.crateDropScheduler = new CrateDropScheduler(this.crateDropZones);
+    this.crateDropScheduler = this.crateDropZones.length ? new CrateDropScheduler(this.crateDropZones) : null;
   }
   // Every marked dropspot opens a match with seven common crates in flight;
   // the independent per-rarity scheduler then continues on its normal clocks.
@@ -350,6 +360,12 @@ export class World {
   nearDropZone(x, z, range = 7) { return (this.crateDropZonePlans || []).some(zone => Math.hypot(x - zone.position.x, z - zone.position.z) < range); }
   populate() {
     const random = this.seeded(8021);
+    if(this.gameMode==='campaign'){
+      const population=this.map.id==='bootcamp'?26:['gaia-bastion','storm-dam','sunforge'].includes(this.map.id)?86:64,extent=this.bounds-8;
+      for(let i=0;i<population;i++){const x=random()*extent*2-extent,z=random()*extent*2-extent;if(this.nearBase(x,z,28)||Math.abs(x)<11){i--;continue}if(i%3===0)this.createTree(x,z,.65+random()*.45);else this.createRock(x,z,.55+random()*.9)}
+      if(this.map.id==='gaia-bastion')for(const [x,z] of [[-62,-8],[-48,24],[55,39],[67,11],[-72,56]])this.wildlife.push(this.factory.createWildlife('bear',new THREE.Vector3(x,this.heightAt(x,z),z)));
+      return;
+    }
     const population=this.gameMode==='deathmatch'?(this.map.id==='wilds'?360:this.map.id==='crossroads'?125:210):(this.map.id==='wilds'?220:this.map.id==='crossroads'?55:120),extent=this.bounds-12;
     for (let i = 0; i < population; i++) {
       let x = random() * extent*2 - extent, z = random() * extent*2 - extent; if (this.nearBase(x, z, 31) || this.nearDropZone(x, z, 9)) { i--; continue; }
@@ -365,7 +381,7 @@ export class World {
   }
   // Structures showing off the 10 generated building textures
   buildStructures() {
-    if(this.gameMode==='deathmatch')return;
+    if(this.gameMode==='deathmatch'||this.gameMode==='campaign')return;
     const add = (geo, tex, x, y, z, opts = {}) => { const m = new THREE.Mesh(geo, this.materials.building(tex, opts.mat)); m.position.set(x, y + this.heightAt(x, z), z); if (opts.ry) m.rotation.y = opts.ry; m.castShadow = m.receiveShadow = true; this.scene.add(m); if (opts.hp) { const d = { id: crypto.randomUUID(), type: 'prop', subtype: tex, group: m, hp: opts.hp, maxHp: opts.hp, radius: opts.radius || 2, dead: false }; m.userData.entity = d; this.destructibles.push(d);geo.computeBoundingBox();const size=new THREE.Vector3();geo.boundingBox.getSize(size);this.registerCollider(m,{shape:'box',halfX:size.x/2,halfZ:size.z/2,top:geo.boundingBox.max.y},d); } return m; };
     // brick ruin walls near midfield
     add(new THREE.BoxGeometry(6, 2.6, .8), 'brick', -6, 1.3, -24, { hp: 260, radius: 3 });
@@ -417,6 +433,7 @@ export class World {
   }
   createRock(x, z, scale) { const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), this.materials.stone); rock.position.set(x, this.heightAt(x, z) + scale * .55, z); rock.scale.y = .65; rock.rotation.set(Math.random(), Math.random(), Math.random()); rock.castShadow = rock.receiveShadow = true; const d = { id: crypto.randomUUID(), type: 'prop', subtype: 'rock', group: rock, hp: 140, maxHp: 140, radius: scale, dead: false }; rock.userData.entity = d; this.destructibles.push(d); this.scene.add(rock); }
   buildInteractives() {
+    if(this.gameMode==='campaign')return;
     const scale=this.gameMode==='deathmatch'?3:1,bunkerPos=new THREE.Vector3(12*scale,this.heightAt(12*scale,24*scale),24*scale);this.bunker=this.factory.createBunker(bunkerPos);this.interactiveStructures.push(this.bunker);
     for(const [x,z,r] of [[-33*scale,-18*scale,.45],[31*scale,-29*scale,-.8],[-38*scale,34*scale,2.25],[37*scale,27*scale,-2.4]]){
       this.motorcycles.push(this.factory.createMotorcycle(new THREE.Vector3(x,this.heightAt(x,z),z),r));
@@ -429,7 +446,58 @@ export class World {
     else if(this.map.id==='sunken')this.buildSunkenCrown();
     else if(this.map.id==='serpent')this.buildSerpentSpine();
     else if(this.map.id==='eclipse')this.buildEclipseSanctum();
+    else if(this.map.id==='bootcamp')this.buildBootcamp();
+    else if(this.map.id==='goldrush')this.buildGoldrush();
+    else if(this.map.id==='gaia-bastion')this.buildGaiaBastion();
+    else if(this.map.id==='storm-dam')this.buildStormDam();
+    else if(this.map.id==='sunforge')this.buildSunforge();
     else this.buildSummitArena();
+  }
+  buildBootcamp(){
+    for(const [x,z,r] of [[-19,8,.15],[19,6,-.2],[-17,-13,-.12],[18,-15,.18]]){const wall=this.themedProp(new THREE.BoxGeometry(10,3.2,1.5),'corrugated_steel',x,z,1.6,420,5,{repeat:2});wall.rotation.y=r}
+    for(const [x,z] of [[-7,2],[8,-4],[-8,-25],[9,24]])this.themedProp(new THREE.CylinderGeometry(1.4,1.8,5,7),'vehicle_metal',x,z,2.5,360,1.8,{repeat:2});
+    for(const z of [-18,18])this.createSandbags(new THREE.Vector3(z<0?-12:12,this.heightAt(z<0?-12:12,z),z),z<0?.45:-.45);
+  }
+  buildGoldrush(){
+    for(const side of [-1,1])for(const [z,w] of [[-48,18],[-13,14],[25,19],[56,15]]){const wall=this.themedProp(new THREE.BoxGeometry(w,4.2,1.8),side<0?'summit_stone':'corrugated_steel',side*(25+(Math.abs(z)%3)*5),z,2.1,620,w*.5,{repeat:3});wall.rotation.y=side*(.18+(z%2)*.05)}
+    for(const [x,z] of [[-18,-68],[18,-68],[-22,-83],[22,-83]])this.themedProp(new THREE.CylinderGeometry(2.2,2.8,8,8),'vehicle_metal',x,z,4,680,2.8,{repeat:2});
+    for(const [x,z,r] of [[-34,0,.25],[32,5,-.28],[-28,39,-.12],[29,-34,.16]])this.createSandbags(new THREE.Vector3(x,this.heightAt(x,z),z),r);
+  }
+  missionProp(geometry,texture,x,z,y,hp,radius,options={}){const mesh=this.themedProp(geometry,texture,x,z,y,hp,radius,options);this.missionTargets.push(mesh.userData.entity);return mesh}
+  buildGaiaBastion(){
+    // Aegis base: two defensive wall belts, barracks, hangars and watch towers.
+    for(const z of [68,84,116])for(const x of [-34,-17,17,34]){if(z===84&&Math.abs(x)<20)continue;this.themedProp(new THREE.BoxGeometry(14,4.5,2),'concrete',x,z,2.25,650,7,{repeat:3})}
+    for(const [x,z,w,d,h] of [[-30,99,20,13,7],[29,98,23,14,8],[-37,70,16,12,6],[38,70,18,13,6]]){this.themedProp(new THREE.BoxGeometry(w,h,d),'corrugated_steel',x,z,h/2,720,Math.max(w,d)*.45,{repeat:4});this.themedProp(new THREE.BoxGeometry(w+1,.5,d+1),'rooftop',x,z,h+.25,220,Math.max(w,d)*.45,{collider:false,repeat:3})}
+    for(const [x,z] of [[-45,83],[45,83],[-43,119],[43,119]]){this.themedProp(new THREE.CylinderGeometry(2.2,2.8,11,8),'vehicle_metal',x,z,5.5,760,2.8,{repeat:2});this.themedProp(new THREE.ConeGeometry(3.4,2.2,8),'plating',x,z,12.1,320,3.4,{collider:false})}
+    // Enemy airfield and approach fortifications.
+    for(const x of [-42,-22,22,42])this.themedProp(new THREE.BoxGeometry(15,4,2),'plating',x,-78,2,560,7.5,{repeat:3});
+    for(const [x,z,r] of [[-32,-49,.2],[31,-46,-.2],[-42,44,.35],[43,48,-.35]])this.createSandbags(new THREE.Vector3(x,this.heightAt(x,z),z),r);
+    const enemyBase=Object.values(this.basePositions)[1]||new THREE.Vector3(0,0,-108),towardCenter=enemyBase.clone().multiplyScalar(-1).setY(0).normalize(),airfieldSide=new THREE.Vector3(-towardCenter.z,0,towardCenter.x),jetPos=enemyBase.clone().addScaledVector(airfieldSide,48).addScaledVector(towardCenter,5);jetPos.y=this.heightAt(jetPos.x,jetPos.z);this.createDestroJet(jetPos);
+    // Hidden red-crate spots: culvert, ruined farmhouse and bridge maintenance bay.
+    for(const [name,x,z] of [['CULVERT RED CACHE',-79,14],['RUINED FARMHOUSE',76,54],['BRIDGE SERVICE BAY',8,-9]]){const pos=new THREE.Vector3(x,this.heightAt(x,z),z);this.secretPlaces.push({name,position:pos.clone(),radius:10});const crate=this.factory.createCrate(pos,CRATE_TYPES.red);crate.noAI=true;crate.sourceDropZoneId='gaia-secret';this.crates.push(crate);for(const dx of [-4,4])this.themedProp(new THREE.BoxGeometry(1.2,3.6,8),'urban_brick',x+dx,z,1.8,340,4,{repeat:2})}
+  }
+  createDestroJet(position){
+    const baseY=position.y+1.15,runway=new THREE.Mesh(new THREE.BoxGeometry(28,.55,34),this.materials.building('asphalt',{repeat:5}));runway.position.set(position.x,this.heightAt(position.x,position.z)+.18,position.z);runway.receiveShadow=true;this.scene.add(runway);this.registerCollider(runway,{shape:'box',halfX:14,halfZ:17,top:.275,blocking:false,walkable:true});
+    const group=new THREE.Group();group.position.set(position.x,baseY,position.z);group.rotation.y=Math.PI;group.name='enemy-destrojet';const chrome=this.materials.color(0xc8d7e3,{metalness:.95,roughness:.13,emissive:0x182b3b,emissiveIntensity:.35}),dark=this.materials.color(0x182433,{metalness:.8,roughness:.22}),red=this.materials.color(0xff334d,{emissive:0x8e0016,emissiveIntensity:1.2,metalness:.5}),engineGlows=[],navLights=[];
+    const fuselage=new THREE.Mesh(new THREE.CapsuleGeometry(1.65,10,6,12),chrome);fuselage.rotation.x=Math.PI/2;fuselage.position.y=3.1;group.add(fuselage);const nose=new THREE.Mesh(new THREE.ConeGeometry(1.68,5,12),chrome);nose.rotation.x=Math.PI/2;nose.position.set(0,3.1,7.5);group.add(nose);const canopy=new THREE.Mesh(new THREE.SphereGeometry(1.35,16,8,0,Math.PI*2,0,Math.PI/2),this.materials.color(0x57cfff,{transparent:true,opacity:.72,metalness:.35,roughness:.08,emissive:0x06466d,emissiveIntensity:.8}));canopy.scale.set(1,.7,1.8);canopy.position.set(0,4.15,1.4);group.add(canopy);
+    for(const side of [-1,1]){const wing=new THREE.Mesh(new THREE.ConeGeometry(5.7,10,3),chrome);wing.rotation.set(Math.PI/2,0,side*Math.PI/2);wing.position.set(side*3.7,2.85,-.4);wing.scale.set(.32,1,1);group.add(wing);const tail=new THREE.Mesh(new THREE.BoxGeometry(.35,3.8,4.2),dark);tail.position.set(side*1.45,4.4,-5.1);tail.rotation.z=side*.28;group.add(tail);const missile=new THREE.Mesh(new THREE.CapsuleGeometry(.28,2.2,3,7),red);missile.rotation.x=Math.PI/2;missile.position.set(side*4.2,2.35,.2);group.add(missile);const nav=new THREE.Mesh(new THREE.SphereGeometry(.19,8,6),new THREE.MeshBasicMaterial({color:side<0?0xff2448:0x55ff9a}));nav.position.set(side*7.2,3,-.35);group.add(nav);navLights.push(nav)}
+    for(const x of [-.72,.72]){const engine=new THREE.Mesh(new THREE.CylinderGeometry(.62,.78,2.8,12),dark);engine.rotation.x=Math.PI/2;engine.position.set(x,2.85,-5.8);group.add(engine);const glow=new THREE.Mesh(new THREE.CircleGeometry(.5,12),new THREE.MeshBasicMaterial({color:0x48d8ff,transparent:true,opacity:.9,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));glow.position.set(x,2.85,-7.22);glow.rotation.x=-Math.PI/2;group.add(glow);engineGlows.push(glow)}
+    this.scene.add(group);this.registerCollider(group,{shape:'box',halfX:7.8,halfZ:9.5,top:4.8,blocking:true});const dropPos=position.clone().add(new THREE.Vector3(20,0,2));dropPos.y=this.heightAt(dropPos.x,dropPos.z)+.08;const drop=new THREE.Group();drop.position.copy(dropPos);const mat=new THREE.MeshBasicMaterial({color:0xff3954,transparent:true,opacity:.8,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,depthWrite:false});for(const [inner,outer] of [[3.8,4.45],[5.2,5.45]]){const ring=new THREE.Mesh(new THREE.RingGeometry(inner,outer,48),mat.clone());ring.rotation.x=-Math.PI/2;drop.add(ring)}for(let i=0;i<8;i++){const arrow=new THREE.Mesh(new THREE.ConeGeometry(.35,1.15,4),mat.clone());const a=i/8*Math.PI*2;arrow.position.set(Math.cos(a)*4.8,.45,Math.sin(a)*4.8);arrow.rotation.z=Math.PI;arrow.rotation.y=-a;drop.add(arrow)}const beam=new THREE.Mesh(new THREE.CylinderGeometry(3.6,5.1,24,32,1,true),new THREE.MeshBasicMaterial({color:0xff2448,transparent:true,opacity:.11,side:THREE.DoubleSide,depthWrite:false,blending:THREE.AdditiveBlending}));beam.position.y=12;drop.add(beam);const beaconTop=new THREE.Mesh(new THREE.TorusGeometry(4.5,.18,8,48),mat.clone());beaconTop.rotation.x=Math.PI/2;beaconTop.position.y=23.5;drop.add(beaconTop);
+    const canvas=document.createElement('canvas');canvas.width=768;canvas.height=150;const ctx=canvas.getContext('2d');ctx.fillStyle='rgba(15,5,12,.88)';ctx.fillRect(3,3,762,144);ctx.strokeStyle='#ff3954';ctx.lineWidth=8;ctx.strokeRect(5,5,758,140);ctx.fillStyle='#fff';ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='900 64px Impact,system-ui';ctx.fillText('ENEMY EXTRACTION',384,76);const labelTexture=new THREE.CanvasTexture(canvas);labelTexture.colorSpace=THREE.SRGBColorSpace;const label=new THREE.Sprite(new THREE.SpriteMaterial({map:labelTexture,transparent:true,depthWrite:false}));label.position.y=18;label.scale.set(13,2.55,1);drop.add(label);this.scene.add(drop);
+    const runwayLights=[];for(const [dx,dz] of [[-12,-15],[12,-15],[-12,15],[12,15]]){const lamp=new THREE.Mesh(new THREE.CylinderGeometry(.18,.28,.6,8),new THREE.MeshBasicMaterial({color:0xff3d55}));lamp.position.set(position.x+dx,this.heightAt(position.x+dx,position.z+dz)+.4,position.z+dz);this.scene.add(lamp);runwayLights.push(lamp)}const jetLight=new THREE.PointLight(0x55dfff,22,42,2);jetLight.position.set(0,5,-5);group.add(jetLight);const extractionLight=new THREE.PointLight(0xff284d,28,46,2);extractionLight.position.set(0,8,0);drop.add(extractionLight);this.destroJet={group,drop,dropPosition:dropPos,beam,beaconTop,engineGlows,navLights,runwayLights,jetLight,extractionLight,baseY};
+  }
+  buildStormDam(){
+    for(const x of [-58,-29,0,29,58]){const pier=this.themedProp(new THREE.BoxGeometry(8,15,20),'concrete',x,3,7.5,1100,10,{repeat:4});pier.rotation.y=.02}
+    for(const z of [-34,-66])for(const x of [-72,-36,0,36,72])this.themedProp(new THREE.BoxGeometry(24,3.8,2),'plating',x,z,1.9,560,12,{repeat:3});
+    for(const [x,z] of [[-55,-42],[0,-57],[55,-42]]){const tower=this.missionProp(new THREE.CylinderGeometry(2.4,3.4,12,8),'neon_concrete',x,z,6,850,3.4,{repeat:2,emissive:0x00aacc,emissiveIntensity:.7});const crown=new THREE.Mesh(new THREE.TorusGeometry(3.3,.22,8,32),new THREE.MeshBasicMaterial({color:0x61efff}));crown.rotation.x=Math.PI/2;crown.position.set(x,this.heightAt(x,z)+12.5,z);this.scene.add(crown);tower.userData.entity.attachments=[crown]}
+    for(const [x,z,w,d,h] of [[-78,46,22,16,9],[76,48,25,16,10],[-36,76,19,14,7],[37,78,19,14,7]])this.themedProp(new THREE.BoxGeometry(w,h,d),'concrete',x,z,h/2,760,Math.max(w,d)*.45,{repeat:4});
+    for(const [name,x,z] of [['TURBINE INSPECTION SHAFT',-91,8],['FLOODED CONTROL ARCHIVE',88,13]])this.secretPlaces.push({name,position:new THREE.Vector3(x,this.heightAt(x,z),z),radius:11});
+  }
+  buildSunforge(){
+    for(const radius of [55,78])for(let i=0;i<16;i++){if(i%4===0)continue;const a=i/16*Math.PI*2,x=Math.cos(a)*radius,z=Math.sin(a)*radius;const wall=this.themedProp(new THREE.BoxGeometry(18,5,2.4),'corrugated_steel',x,z,2.5,740,9,{repeat:3});wall.rotation.y=-a}
+    for(let i=0;i<8;i++){const a=i/8*Math.PI*2,x=Math.cos(a)*42,z=Math.sin(a)*42;this.themedProp(new THREE.CylinderGeometry(3,4.5,18,10),'vehicle_metal',x,z,9,980,4.5,{repeat:3});const flame=new THREE.Mesh(new THREE.ConeGeometry(1.7,6,8),new THREE.MeshBasicMaterial({color:0xff7b28,transparent:true,opacity:.72,blending:THREE.AdditiveBlending}));flame.position.set(x,this.heightAt(x,z)+21,z);this.scene.add(flame)}
+    for(const [x,z] of [[-26,-26],[26,-26],[-26,26],[26,26]]){const lock=this.missionProp(new THREE.BoxGeometry(5,8,5),'neon_concrete',x,z,4,900,3.5,{repeat:2,emissive:0xff3500,emissiveIntensity:.9});const band=new THREE.Mesh(new THREE.TorusGeometry(3.2,.3,8,28),new THREE.MeshBasicMaterial({color:0x48dfff}));band.rotation.x=Math.PI/2;band.position.set(x,this.heightAt(x,z)+4,z);this.scene.add(band);lock.userData.entity.attachments=[band]}
+    for(const [name,x,z] of [['SMUGGLER COOLANT TUNNEL',-102,54],['FOREMAN ASH VAULT',96,-62]]){const pos=new THREE.Vector3(x,this.heightAt(x,z),z);this.secretPlaces.push({name,position:pos.clone(),radius:11});const crate=this.factory.createCrate(pos,CRATE_TYPES.red);crate.noAI=true;this.crates.push(crate)}
   }
   themedProp(geometry,texture,x,z,y=0,hp=420,radius=2,options={}){
     const {collider=true,walkable=false,...materialOptions}=options,object=new THREE.Mesh(geometry,this.materials.building(texture,materialOptions));object.position.set(x,this.heightAt(x,z)+y,z);object.castShadow=object.receiveShadow=true;this.scene.add(object);
@@ -505,6 +573,7 @@ export class World {
     });
   }
   buildDecorations() {
+    if(this.gameMode==='campaign')return;
     if(this.gameMode==='deathmatch'){
       for(const base of Object.values(this.basePositions)){const inward=base.clone().multiplyScalar(-1).setY(0).normalize(),junction=inward.clone().multiplyScalar(112);this.createRoad(base.clone().addScaledVector(inward,25),junction,5.5);this.createRoad(junction,new THREE.Vector3(0,0,0),4.2)}
       const random=this.seeded(9981);for(let i=0;i<150;i++){const angle=random()*Math.PI*2,radius=this.bounds-18-random()*14,x=Math.cos(angle)*radius,z=Math.sin(angle)*radius;if(this.nearBase(x,z,32))continue;if(this.map.id==='rift'||this.map.id==='crown')this.createRock(x,z,1+random()*2.1);else this.createTree(x,z,.8+random()*.9)}return;
@@ -658,6 +727,7 @@ export class World {
     crate.angularVelocity.set((Math.random()-.5)*8, (Math.random()-.5)*5, (Math.random()-.5)*8).multiplyScalar(1/Math.sqrt(mass));
   }
   update(time, dt = 0, particles = null) {
+    if(this.destroJet){const {group,drop,beam,beaconTop,engineGlows=[],navLights=[],runwayLights=[],jetLight,extractionLight,baseY}=this.destroJet,pulse=.72+Math.sin(time*8)*.25;group.position.y=baseY+Math.sin(time*1.8)*.22;group.rotation.z=Math.sin(time*.9)*.018;group.rotation.x=Math.sin(time*1.15)*.012;drop.rotation.y=time*.9;drop.scale.setScalar(1+Math.sin(time*4.5)*.06);if(beam)beam.material.opacity=.08+Math.sin(time*5)*.045;if(beaconTop){beaconTop.rotation.z=time*1.7;beaconTop.scale.setScalar(1+Math.sin(time*3.5)*.12)}engineGlows.forEach((glow,i)=>{glow.material.opacity=pulse;glow.scale.setScalar(1+Math.sin(time*13+i)*.3)});navLights.forEach((light,i)=>light.visible=Math.sin(time*5+i*Math.PI)>.05);runwayLights.forEach((light,i)=>{light.material.opacity=.45+Math.sin(time*4-i*.7)*.45;light.scale.y=.8+Math.sin(time*5-i)*.2});if(jetLight)jetLight.intensity=18+pulse*12;if(extractionLight)extractionLight.intensity=22+Math.sin(time*4)*8}
     this.waterMaterial.uniforms.uTime.value = time;
     for(const [i,tower] of this.dominationTowers.entries()){
       const capture=tower.captureProgress/5,pulse=.5+.5*Math.sin(time*(tower.contested?13:4)+i),active=Boolean(tower.captureTeam);
@@ -861,7 +931,7 @@ export class World {
     }
 
     // 3. Cave structure
-    if (this.cavePosition) {
+    if (this.cavePosition && this.caveGroup) {
       const cPos = this.cavePosition;
       const dx = pos.x - cPos.x;
       const dz = pos.z - cPos.z;

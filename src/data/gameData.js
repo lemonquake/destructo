@@ -291,9 +291,72 @@ export const COSMETICS = Object.freeze([
 
 export const SETTINGS_DEFAULTS = Object.freeze({ shadows: true, volume: .55, cameraShake: true, musicMuted: false, soundsMuted: false, mouseSensitivity: 1 });
 
+export const CAMPAIGN_DIMENSIONS = Object.freeze([
+  Object.freeze({ id: 'gaia', order: 1, name: 'Gaia', status: 'ACTIVE', subtitle: 'THE LIVING WAR WORLD', description: 'Five operations across scrapyards, military frontiers, storm dams and a volcanic foundry.', accent: '#55f08a', secondary: '#29b7ff', icon: '✶', missionIds: Object.freeze(['four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge']) }),
+  Object.freeze({ id: 'cryon', order: 2, name: 'Cryon', status: 'INCOMING', subtitle: 'THE FROZEN MACHINE MOON', description: 'Glacier fortresses and ancient machines wait beyond the Gaia gate.', accent: '#74e8ff', secondary: '#a785ff', icon: '❄', missionIds: Object.freeze([]) }),
+  Object.freeze({ id: 'pyra', order: 3, name: 'Pyra', status: 'LOCKED', subtitle: 'THE SUNKEN FIRE KINGDOM', description: 'A burning ocean dimension detected through unstable portal telemetry.', accent: '#ff6a35', secondary: '#ffd23f', icon: '◈', missionIds: Object.freeze([]) }),
+]);
+
+export const CAMPAIGN_MISSIONS = Object.freeze({
+  'four-of-a-kind': Object.freeze({
+    id: 'four-of-a-kind', order: 1, name: 'Operation: Four of a Kind', type: 'campaign', mapId: 'bootcamp', reward: 500,
+    briefing: 'Major Rivet has one recruit, one D-Builder, and a terrible plan. Manufacture a squad, arm it, then erase the enemy outpost.',
+    objective: 'Build the squad. Arm the squad. Break the outpost.',
+    startingSquad: ['scout'], enemySquad: ['gunner', 'scout'],
+    supplyDrops: Object.freeze({ initial: 6, additional: 16, waveSize: 2, firstDelay: 3, interval: 5, radius: 9 }),
+    steps: Object.freeze([
+      Object.freeze({ id: 'build-squad', title: 'ASSEMBLE FOUR DESTRUCTOS', instruction: 'Carry two crates to one Builder column, then materialize a buddy.', key: 'E / F', target: 'crate', goal: 4 }),
+      Object.freeze({ id: 'arm-squad', title: 'ORDER A SUPPLY RUN', instruction: 'Command your allies to build and collect weapons.', key: 'V', target: 'builder', goal: 3 }),
+      Object.freeze({ id: 'attack-outpost', title: 'UNLEASH THE SQUAD', instruction: 'Order the armed squad to attack the enemy outpost.', key: 'V', target: 'enemyFactory', goal: 1 }),
+      Object.freeze({ id: 'destroy-outpost', title: 'BREAK EVERYTHING', instruction: 'Destroy both defenders and their command factory.', key: 'FIRE', target: 'enemyFactory', goal: 3 }),
+    ]),
+  }),
+  'gold-rush': Object.freeze({
+    id: 'gold-rush', order: 2, name: 'Operation: Gold Rush', type: 'campaign', mapId: 'goldrush', reward: 750, requires: 'four-of-a-kind',
+    briefing: 'Eliminate the five Scrapjack guards. Building a full five-Destructo strike team is optional, but doing it triggers Major Rivet’s CHAAARGE assault.',
+    objective: 'Eliminate all five enemy guards. Building five Destructos is optional.',
+    startingSquad: ['commando'], enemySquad: ['heavy', 'gunner', 'medic', 'officer', 'scout'], maxPlayerDestructos: 5,
+    optionalObjectives: Object.freeze([Object.freeze({ id:'build-five', title:'OPTIONAL · BUILD THE SCRAPFIST FIVE', goal:5, rewardText:'TRIGGERS ALLIED CHAAARGE' })]),
+    steps: Object.freeze([
+      Object.freeze({ id: 'eliminate-guards', title: 'ELIMINATE THE SCRAPJACK FIVE', instruction: 'Destroy all five enemy guards. Build to five allies if you want an automatic assault.', key: 'FIRE · OPTIONAL E/F', target: 'guards', goal: 5 }),
+    ]),
+  }),
+  'golden-shield': Object.freeze({
+    id: 'golden-shield', order: 3, name: 'Operation: Golden Shield', type: 'campaign', mapId: 'gaia-bastion', reward: 1200, requires: 'gold-rush',
+    briefing: 'Hold Fort Aegis for ten minutes. Scrapjack raiders will steal the Golden Crate and run it across the river to a waiting DestroJet.',
+    objective: 'Defend the Golden Crate for 10:00. Do not let it reach the DestroJet.',
+    startingSquad: ['heavy','heavy','heavy','heavy','heavy'], startingWeapon: 'machinegun', startingAmmo: 300, turretRiderClass: 'heavy',
+    enemySquad: ['scout','gunner','scout','medic','heavy','commando','scout','gunner','officer','sniper'],
+    rules: Object.freeze({ defenseSeconds: 600, reinforcementSeconds: 5, playerBaseInvulnerable: true, enemiesPerWave: 3, deathsPerWave: 3, supplyBurst: 3 }),
+    steps: Object.freeze([
+      Object.freeze({ id: 'defend-gold', title: 'HOLD THE GOLDEN LINE', instruction: 'Intercept thieves, recover dropped cargo, and survive until evacuation.', key: '10:00', target: 'goldenCrate', goal: 600 }),
+    ]),
+  }),
+  stormbreak: Object.freeze({
+    id: 'stormbreak', order: 4, name: 'Operation: Stormbreak', type: 'campaign', mapId: 'storm-dam', reward: 1500, requires: 'golden-shield',
+    briefing: 'Cross a flooded hydroelectric complex, demolish three storm relays, then break the shielded command station before the valley drowns.',
+    objective: 'Destroy all three storm relays, then eliminate the command station.',
+    startingSquad: ['engineer','commando','medic'], enemySquad: ['gunner','sniper','heavy','officer','medic','scout'],
+    rules: Object.freeze({ missionSeconds: 720 }),
+    steps: Object.freeze([
+      Object.freeze({ id: 'destroy-relays', title: 'SILENCE THE STORM RELAYS', instruction: 'Find and destroy the three cyan power towers across the dam terraces.', key: 'FIRE', target: 'missionTargets', goal: 3 }),
+      Object.freeze({ id: 'break-command', title: 'BREACH DAM COMMAND', instruction: 'The shield is down. Destroy the enemy command factory.', key: 'FIRE', target: 'enemyFactory', goal: 1 }),
+    ]),
+  }),
+  'heart-of-the-forge': Object.freeze({
+    id: 'heart-of-the-forge', order: 5, name: 'Operation: Heart of the Forge', type: 'campaign', mapId: 'sunforge', reward: 2000, requires: 'stormbreak',
+    briefing: 'Infiltrate the Sunforge caldera, crack four armored coolant locks, then destroy the Prime Foundry before its reactor overloads.',
+    objective: 'Shatter four coolant locks and destroy the Prime Foundry within 9 minutes.',
+    startingSquad: ['heavy','engineer','medic','commando'], enemySquad: ['heavy','gunner','sniper','officer','commando','medic','heavy','scout'],
+    rules: Object.freeze({ missionSeconds: 540, reinforcementSeconds: 8 }),
+    steps: Object.freeze([
+      Object.freeze({ id: 'break-coolant', title: 'CRACK THE COOLANT LOCKS', instruction: 'Destroy four glowing locks around the lava-ringed reactor.', key: 'FIRE', target: 'missionTargets', goal: 4 }),
+      Object.freeze({ id: 'destroy-foundry', title: 'END THE PRIME FOUNDRY', instruction: 'Push through the opened blast lane and demolish the enemy factory.', key: 'FIRE', target: 'enemyFactory', goal: 1 }),
+    ]),
+  }),
+});
+
 export const MISSIONS = Object.freeze({
-  skirmish: { id: 'skirmish', name: 'Battle Royale Skirmish', type: 'skirmish', briefing: 'Up to 10 teams clash on the hills. Destroy every enemy base — when your base falls and your squad is wiped, you are out.', objective: 'Eliminate all enemy teams', reward: 600 },
-  assault: { id: 'assault', name: 'Operation Green Hammer', type: 'assault', briefing: 'Cross the river, build your squad, and destroy the Red command factory.', objective: 'Destroy the enemy factory', reward: 500 },
-  crystal: { id: 'crystal', name: 'Crystal Lock', type: 'capture', briefing: 'Secure the glowing mineral cave while both armies contest the ridge.', objective: 'Hold the mineral cave for 45 seconds', duration: 45, reward: 700 },
-  builder: { id: 'builder', name: 'Crate Expectations', type: 'build', briefing: 'Prove the D-Builder doctrine by manufacturing a four-crate unit under fire.', objective: 'Manufacture a 4-crate Destructo', reward: 650 },
+  skirmish: Object.freeze({ id: 'skirmish', name: 'Custom Match', type: 'skirmish', briefing: 'Build a battlefield, choose the rules, and let the mayhem begin.', objective: 'Eliminate all enemy teams', reward: 600 }),
+  ...CAMPAIGN_MISSIONS,
 });

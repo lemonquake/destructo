@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { MAPS, DOMINATION_MAPS, DEATHMATCH_SECRET_PLANS, DEFAULT_MAP_ID, mapById } from '../src/data/maps.js';
+import { MAPS, DOMINATION_MAPS, CAMPAIGN_MAPS, DEATHMATCH_SECRET_PLANS, DEFAULT_MAP_ID, mapById } from '../src/data/maps.js';
 import { MAP_SURFACE_THEMES, surfaceTexturesForTheme } from '../src/data/mapSurfaces.js';
 import { BASE_TEXTURES, BUILDING_TEXTURES, MAP_TEXTURES } from '../src/game/Materials.js';
 import { CrateDropScheduler } from '../src/game/CrateDropSystem.js';
@@ -66,7 +66,7 @@ describe('themed map roster', () => {
   });
 
   it('defines valid layered surface art for every playable map', () => {
-    const mapIds = [...Object.keys(MAPS), ...Object.keys(DOMINATION_MAPS)];
+    const mapIds = [...Object.keys(MAPS), ...Object.keys(DOMINATION_MAPS), ...Object.keys(CAMPAIGN_MAPS)];
     const available = new Set([...BASE_TEXTURES, ...MAP_TEXTURES, ...BUILDING_TEXTURES]);
     expect(Object.keys(MAP_SURFACE_THEMES)).toEqual(mapIds);
     for (const id of mapIds) {
@@ -80,6 +80,13 @@ describe('themed map roster', () => {
     expect(used.has('grass')).toBe(true);
     expect(used.has('dirt')).toBe(true);
     expect(used.has('stone')).toBe(true);
+  });
+
+  it('keeps campaign maps out of Custom Match while retaining authored sizes',()=>{
+    expect(Object.keys(CAMPAIGN_MAPS)).toEqual(['bootcamp','goldrush','gaia-bastion','storm-dam','sunforge']);
+    expect(CAMPAIGN_MAPS.bootcamp.bounds).toBeLessThan(CAMPAIGN_MAPS.goldrush.bounds);
+    expect(CAMPAIGN_MAPS['gaia-bastion']).toMatchObject({hasWater:true,sizeClass:'LARGE'});
+    expect(mapById('bootcamp')).toBe(CAMPAIGN_MAPS.bootcamp);
   });
 
   it('does not load the legacy material atlas at runtime', () => {

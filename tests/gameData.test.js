@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ACTIVE_SKILLS, CLASSES, COSMETICS, CRATE_TYPES, CRATE_WEAPON_CHANCE, DROPS, MISSIONS, PASSIVE_SKILLS, RECIPES, WEAPONS, buildWeaponVariant, crateCombinationProfile, destructoSpeedBonus, tankHpBonus, rollCrateType, rollCrateWeapon, rollDrop, scheduledCrateType, shiftTeamAlliance, normalizeAllianceGroups, allianceSummary, MAX_ALLIANCES } from '../src/data/gameData.js';
+import { ACTIVE_SKILLS, CAMPAIGN_DIMENSIONS, CAMPAIGN_MISSIONS, CLASSES, COSMETICS, CRATE_TYPES, CRATE_WEAPON_CHANCE, DROPS, MISSIONS, PASSIVE_SKILLS, RECIPES, WEAPONS, buildWeaponVariant, crateCombinationProfile, destructoSpeedBonus, tankHpBonus, rollCrateType, rollCrateWeapon, rollDrop, scheduledCrateType, shiftTeamAlliance, normalizeAllianceGroups, allianceSummary, MAX_ALLIANCES } from '../src/data/gameData.js';
 import { PROJECTILE_SPREAD_SCALE } from '../src/game/CombatSystem.js';
 
 describe('game data integrity', () => {
@@ -95,8 +95,15 @@ describe('game data integrity', () => {
     expect(COSMETICS.filter(c => c.kind === 'skin').length).toBeGreaterThanOrEqual(8);
     for (const c of COSMETICS) expect(c.price).toBeGreaterThan(0);
   });
-  it('ships four distinct mission objectives including multiplayer skirmish', () => {
-    expect(Object.keys(MISSIONS)).toHaveLength(4); expect(new Set(Object.values(MISSIONS).map(m => m.type))).toEqual(new Set(['skirmish', 'assault', 'capture', 'build']));
+  it('ships Custom Match plus the five ordered Gaia campaign missions', () => {
+    expect(Object.keys(MISSIONS)).toEqual(['skirmish','four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge']);
+    expect(Object.values(CAMPAIGN_MISSIONS).map(m=>m.mapId)).toEqual(['bootcamp','goldrush','gaia-bastion','storm-dam','sunforge']);
+    expect(CAMPAIGN_DIMENSIONS[0]).toMatchObject({id:'gaia',missionIds:['four-of-a-kind','gold-rush','golden-shield','stormbreak','heart-of-the-forge']});
+    expect(CAMPAIGN_MISSIONS['gold-rush'].requires).toBe('four-of-a-kind');
+    expect(CAMPAIGN_MISSIONS['gold-rush'].maxPlayerDestructos).toBe(5);
+    expect(CAMPAIGN_MISSIONS['golden-shield'].rules).toMatchObject({defenseSeconds:600,reinforcementSeconds:5,enemiesPerWave:3,deathsPerWave:3,supplyBurst:3});
+    expect(CAMPAIGN_MISSIONS['four-of-a-kind'].supplyDrops).toMatchObject({initial:6,additional:16,waveSize:2});
+    for(const mission of Object.values(CAMPAIGN_MISSIONS)){expect(mission.steps.length).toBeGreaterThan(0);expect(mission.reward).toBeGreaterThan(0)}
   });
 });
 
