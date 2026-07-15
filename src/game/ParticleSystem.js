@@ -2,7 +2,7 @@ import * as THREE from 'three';
 
 export class ParticleSystem {
   constructor(scene, heightAt = null) {
-    this.scene=scene;this.heightAt=heightAt;this.fragments=[];this.rings=[];this.stains=[];this.quality=1;this.cameraPosition=new THREE.Vector3();
+    this.scene=scene;this.heightAt=heightAt;this.fragments=[];this.rings=[];this.stains=[];this.quality=1;this.cameraPosition=new THREE.Vector3();this.cameraQuaternion=new THREE.Quaternion();
     const geo=new THREE.BoxGeometry(.16,.16,.16);
     for(let i=0;i<260;i++){const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xff6b3d,transparent:true}));mesh.visible=false;scene.add(mesh);this.fragments.push({mesh,velocity:new THREE.Vector3(),life:0,maxLife:1,isWater:false})}
     const ringGeo=new THREE.RingGeometry(.35,.62,10);for(let i=0;i<28;i++){const mesh=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0x343443,transparent:true,side:THREE.DoubleSide,depthWrite:false}));mesh.visible=false;scene.add(mesh);this.rings.push({mesh,life:0,maxLife:1})}
@@ -15,6 +15,16 @@ export class ParticleSystem {
     this.muzzleFlashes=[];const flashGeo=new THREE.ConeGeometry(.16,.7,6,1,true);flashGeo.translate(0,.35,0);
     for(let i=0;i<64;i++){const mesh=new THREE.Mesh(flashGeo,new THREE.MeshBasicMaterial({color:0xffdc62,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,side:THREE.DoubleSide}));mesh.visible=false;mesh.renderOrder=20;scene.add(mesh);this.muzzleFlashes.push({mesh,life:0,maxLife:.07})}
     this.muzzleLights=[];for(let i=0;i<6;i++){const light=new THREE.PointLight(0xffb33a,0,7,2);light.visible=false;scene.add(light);this.muzzleLights.push({light,life:0,maxLife:.055})}
+    // camera-facing flash cores: from the shoulder cam the aligned cone is seen end-on
+    // and nearly invisible, so every shot also pops a bright billboarded disc
+    this.flashCores=[];const coreGeo=new THREE.CircleGeometry(.5,12);
+    for(let i=0;i<40;i++){const mesh=new THREE.Mesh(coreGeo,new THREE.MeshBasicMaterial({color:0xffe9a8,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false,side:THREE.DoubleSide}));mesh.visible=false;mesh.renderOrder=21;scene.add(mesh);this.flashCores.push({mesh,life:0,maxLife:.06,startScale:1})}
+    // pooled bullet tracers: a single instanced mesh of additive segments laid along each
+    // projectile's per-frame travel, fading over ~0.1s to leave a visible trace line
+    this.trailLimit=512;this.trails=[];this.trailCursor=0;this._trailDummy=new THREE.Object3D();this._trailColor=new THREE.Color();
+    this.trailMesh=new THREE.InstancedMesh(new THREE.BoxGeometry(.05,.05,1),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,toneMapped:false}),this.trailLimit);
+    this.trailMesh.count=0;this.trailMesh.frustumCulled=false;scene.add(this.trailMesh);
+    for(let i=0;i<this.trailLimit;i++)this.trails.push({life:0,maxLife:.09,start:new THREE.Vector3(),end:new THREE.Vector3(),color:new THREE.Color()});
     this.impactClouds=[];const cloudGeo=new THREE.IcosahedronGeometry(.32,1);
     for(let i=0;i<48;i++){const mesh=new THREE.Mesh(cloudGeo,new THREE.MeshBasicMaterial({color:0x777781,transparent:true,opacity:0,depthWrite:false,blending:THREE.NormalBlending,toneMapped:false}));mesh.visible=false;scene.add(mesh);this.impactClouds.push({mesh,life:0,maxLife:.5,velocity:new THREE.Vector3(),startScale:1})}
 
@@ -39,8 +49,22 @@ export class ParticleSystem {
   activeEffectCount(){return this.fragments.filter(x=>x.life>0).length+this.rings.filter(x=>x.life>0).length+this.stains.filter(x=>x.life>0).length+this.waterRipples.filter(x=>x.life>0).length+this.muzzleFlashes.filter(x=>x.life>0).length+this.impactClouds.filter(x=>x.life>0).length+this.muzzleLights.filter(x=>x.life>0).length}
   burst(position,color=0xff6a37,count=24,power=8){for(let n=0;n<count;n++){const p=this.fragments.find(x=>x.life<=0);if(!p)break;p.life=p.maxLife=.55+Math.random()*.8;p.mesh.visible=true;p.mesh.material.color.setHex(n%4===0?0xffe66c:color);p.mesh.material.opacity=1;p.mesh.position.copy(position);p.mesh.scale.setScalar(.5+Math.random()*1.4);p.velocity.set((Math.random()-.5)*power,Math.random()*power,(Math.random()-.5)*power)}const ring=this.rings.find(x=>x.life<=0);if(ring){ring.life=ring.maxLife=.7;ring.mesh.visible=true;ring.mesh.position.copy(position);ring.mesh.position.y+=.35;ring.mesh.scale.setScalar(.4);ring.mesh.material.opacity=.75;ring.mesh.lookAt(position.x,position.y+8,position.z)}}
   muzzleFlash(position,direction,weapon){
-    if(!position)return;const flash=this.muzzleFlashes.find(item=>item.life<=0);if(flash){const energy=['plasma','arc'].includes(weapon.projectileStyle),rocket=['rocket','missile'].includes(weapon.projectileStyle),flame=weapon.projectileStyle==='plasma'&&weapon.shotPower<30,launch=Boolean(weapon.mine);flash.life=flash.maxLife=flame ? .11 : rocket ? .09 : energy ? .08 : .055;flash.mesh.visible=true;flash.mesh.position.copy(position);flash.mesh.material.color.setHex(energy?weapon.color:flame?0xff6428:launch?0x9eff8a:0xffdc62);flash.mesh.material.opacity=1;const dir=(direction?.lengthSq?.()>0?direction:new THREE.Vector3(0,0,1)).clone().normalize();flash.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);const scale=launch?.65:flame?1.75:rocket?1.35:energy?1.15:weapon.pellets?1.25:1;flash.mesh.scale.set(scale,scale*(flame?1.8:1),scale);flash.mesh.rotateY(Math.random()*Math.PI*2)}
+    if(!position)return;const energy=['plasma','arc'].includes(weapon.projectileStyle),rocket=['rocket','missile'].includes(weapon.projectileStyle),flame=weapon.projectileStyle==='plasma'&&weapon.shotPower<30,launch=Boolean(weapon.mine);
+    const dir=(direction?.lengthSq?.()>0?direction:new THREE.Vector3(0,0,1)).clone().normalize();
+    const flash=this.muzzleFlashes.find(item=>item.life<=0);if(flash){flash.life=flash.maxLife=flame ? .11 : rocket ? .09 : energy ? .08 : .07;flash.mesh.visible=true;flash.mesh.position.copy(position);flash.mesh.material.color.setHex(energy?weapon.color:flame?0xff6428:launch?0x9eff8a:0xffdc62);flash.mesh.material.opacity=1;flash.mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),dir);const scale=(launch?.65:flame?1.75:rocket?1.35:energy?1.15:weapon.pellets?1.25:1)*1.3;flash.mesh.scale.set(scale,scale*(flame?1.8:1),scale);flash.mesh.rotateY(Math.random()*Math.PI*2)}
+    const core=this.flashCores.find(item=>item.life<=0);
+    if(core){core.life=core.maxLife=flame?.09:.06;core.mesh.visible=true;core.mesh.position.copy(position).addScaledVector(dir,.12);core.mesh.material.color.setHex(energy?weapon.color:flame?0xff8a3c:launch?0x9eff8a:0xffe9a8);core.mesh.material.opacity=1;core.startScale=(launch?.5:rocket?1.3:flame?1.2:weapon.pellets?1.15:.85)*(.85+Math.random()*.35);core.mesh.scale.setScalar(core.startScale);core.mesh.quaternion.copy(this.cameraQuaternion)}
+    // a few hot sparks kicked forward out of the barrel
+    if(this.quality>=.7&&!launch){const sparkCount=2+(weapon.pellets?2:0);for(let n=0;n<sparkCount;n++){const s=this.fragments.find(x=>x.life<=0);if(!s)break;s.isWater=false;s.life=s.maxLife=.12+Math.random()*.14;s.mesh.visible=true;s.mesh.material.color.setHex(n%2?0xffe66c:0xffab3f);s.mesh.material.opacity=1;s.mesh.position.copy(position);s.mesh.scale.setScalar(.14+Math.random()*.18);s.velocity.copy(dir).multiplyScalar(7+Math.random()*6);s.velocity.x+=(Math.random()-.5)*3;s.velocity.y+=Math.random()*1.8;s.velocity.z+=(Math.random()-.5)*3}}
     if(this.quality<.55||position.distanceToSquared(this.cameraPosition)>45*45)return;const slot=this.muzzleLights.find(item=>item.life<=0);if(slot){slot.life=slot.maxLife=.05;slot.light.visible=true;slot.light.position.copy(position);slot.light.color.setHex(weapon?.color||0xffb33a);slot.light.intensity=weapon?.explosive?3.2:2.1;slot.light.distance=weapon?.explosive?10:7}
+  }
+  // fading tracer segment along a projectile's last frame of travel (round-robin pool)
+  bulletTrail(start,end,color=0xffdd66){
+    if(this.quality<.45||!start||!end)return;
+    if(start.distanceToSquared(this.cameraPosition)>130*130)return;
+    if(start.distanceToSquared(end)<.0025)return;
+    const t=this.trails[this.trailCursor];this.trailCursor=(this.trailCursor+1)%this.trailLimit;
+    t.life=t.maxLife=.09;t.start.copy(start);t.end.copy(end);t.color.setHex(color).lerp(this._trailColor.setHex(0xffffff),.35);
   }
   impact(position,color,options={}){
     const normal=options.normal?.clone?.().normalize()||new THREE.Vector3(0,1,0),kind=options.kind||'projectile',cloud=this.impactClouds.find(item=>item.life<=0);if(cloud){cloud.life=cloud.maxLife=kind==='explosive' ? .75 : kind==='boundary' ? .3 : .48;cloud.mesh.visible=true;cloud.mesh.position.copy(position).addScaledVector(normal,.08);cloud.mesh.material.color.setHex(kind==='boundary'?0x8695aa:options.surface==='water'?0x8be5ff:options.surface==='dirt'?0x8d7763:0x656873);cloud.mesh.material.opacity=kind==='explosive' ? .8 : .6;cloud.startScale=kind==='explosive'?1.5:.55;cloud.mesh.scale.setScalar(cloud.startScale);cloud.velocity.copy(normal).multiplyScalar(kind==='explosive'?2.2:.65)}
@@ -85,6 +109,7 @@ export class ParticleSystem {
   }
   update(dt,camera){
     if(camera?.position)this.cameraPosition.copy(camera.position);
+    if(camera?.quaternion)this.cameraQuaternion.copy(camera.quaternion);
     for(const p of this.fragments){
       if(p.life<=0)continue;
       p.life-=dt;
@@ -115,6 +140,20 @@ export class ParticleSystem {
       r.mesh.material.opacity=(1-t)*0.75;
     }
     for(const flash of this.muzzleFlashes){if(flash.life<=0)continue;flash.life-=dt;if(flash.life<=0){flash.mesh.visible=false;continue}const t=flash.life/flash.maxLife;flash.mesh.material.opacity=t;flash.mesh.scale.multiplyScalar(1+dt*7)}
+    for(const core of this.flashCores){if(core.life<=0)continue;core.life-=dt;if(core.life<=0){core.mesh.visible=false;continue}const t=core.life/core.maxLife;core.mesh.material.opacity=t;core.mesh.scale.setScalar(core.startScale*(1.45-t*.45));core.mesh.quaternion.copy(this.cameraQuaternion)}
+    let trailCount=0;
+    for(const trail of this.trails){
+      if(trail.life<=0)continue;trail.life-=dt;if(trail.life<=0)continue;
+      const k=trail.life/trail.maxLife,len=trail.start.distanceTo(trail.end);
+      this._trailDummy.position.copy(trail.start).lerp(trail.end,.5);
+      this._trailDummy.lookAt(trail.end);
+      this._trailDummy.scale.set(.5+k*.8,.5+k*.8,Math.max(.01,len));
+      this._trailDummy.updateMatrix();
+      this.trailMesh.setMatrixAt(trailCount,this._trailDummy.matrix);
+      this.trailMesh.setColorAt(trailCount,this._trailColor.copy(trail.color).multiplyScalar(k));
+      trailCount++;
+    }
+    this.trailMesh.count=trailCount;this.trailMesh.instanceMatrix.needsUpdate=true;if(this.trailMesh.instanceColor)this.trailMesh.instanceColor.needsUpdate=true;
     for(const slot of this.muzzleLights){if(slot.life<=0)continue;slot.life-=dt;if(slot.life<=0){slot.light.visible=false;slot.light.intensity=0;continue}slot.light.intensity*=Math.pow(.01,dt/slot.maxLife)}
     for(const cloud of this.impactClouds){if(cloud.life<=0)continue;cloud.life-=dt;if(cloud.life<=0){cloud.mesh.visible=false;continue}const t=1-cloud.life/cloud.maxLife;cloud.mesh.position.addScaledVector(cloud.velocity,dt);cloud.velocity.multiplyScalar(Math.pow(.22,dt));cloud.mesh.scale.setScalar(cloud.startScale*(1+t*2.7));cloud.mesh.material.opacity=(1-t)*.62;cloud.mesh.rotation.x+=dt*1.8;cloud.mesh.rotation.y+=dt*2.3}
   }

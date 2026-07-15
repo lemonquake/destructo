@@ -598,6 +598,9 @@ export class Game{
   // aim: shoulder-cam mouse look — the reticle stays screen-centered and the
   // camera turns with the mouse; right-click snaps the aim onto a locked target
   updateAim(dt){const p=this.player;this.ballisticOutOfRange=false;const sensitivity=.0022*(this.save?.data?.settings?.mouseSensitivity??1);
+    // updateHover runs at the end of the previous frame, so while the view is turning
+    // its point is stale — aim along the fresh look ray instead (same rule as turrets)
+    const mouseMoved=Boolean(this.input.mouse.dx||this.input.mouse.dy),mobileMoved=Boolean(this.input.mobile&&this.input.aimAxis&&(this.input.aimAxis.x||this.input.aimAxis.y));
     if (this.fpsMode) {
       this.fpsYaw = (this.fpsYaw || 0) - this.input.mouse.dx * sensitivity;
       this.fpsPitch = THREE.MathUtils.clamp((this.fpsPitch || 0) - this.input.mouse.dy * sensitivity, -Math.PI / 2.1, Math.PI / 2.1);
@@ -607,7 +610,13 @@ export class Game{
         Math.sin(this.fpsPitch),
         Math.cos(this.fpsYaw) * Math.cos(this.fpsPitch)
       );
-      p.aim.copy(look).normalize();
+      // fire toward the point under the reticle with ballistic compensation; the FPS
+      // camera follows lookDirection(), so a compensated aim never tilts the view
+      const eye=p.group.position.clone().add(new THREE.Vector3(0,1.62,0));
+      const targetPoint=(this.hoverPoint&&!mouseMoved&&!mobileMoved)?this.hoverPoint.clone():eye.clone().addScaledVector(look,Math.max(60,p.weapon?.effectiveRange||45));
+      const solved=this.combat?.ballisticDirectionTo?.(p,targetPoint);
+      if(solved)p.aim.copy(solved).normalize();
+      else{const muzzle=this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||eye,dir=targetPoint.sub(muzzle);p.aim.copy(dir.lengthSq()>.01?dir.normalize():look)}
       p.group.rotation.y = this.fpsYaw;
       p.headPitch = -this.fpsPitch;
       return;
@@ -641,18 +650,26 @@ export class Game{
     }
     if(!this.input.mouse.right)this.rightLockDone=false;
     if(this.lockTarget){
-      const targetPos=this.lockTarget.group.position.clone(),targetHeight=targetPos.y+(this.lockTarget.type==='unit'?1.2:1),solved=this.combat.ballisticDirectionFor?.(p,this.lockTarget);
-      this.ballisticOutOfRange=!solved;const dir=solved||new THREE.Vector3(targetPos.x,targetHeight,targetPos.z).sub(new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z));
-      if(dir.lengthSq()>.01)p.aim.lerp(dir.normalize(),.5).normalize();
+      const targetPos=this.lockTarget.group.position.clone(),targetHeight=targetPos.y+(this.lockTarget.type==='unit'?1.2:1),solved=this.combat?.ballisticDirectionFor?.(p,this.lockTarget);
+      this.ballisticOutOfRange=!solved;const dir=solved||new THREE.Vector3(targetPos.x,targetHeight,targetPos.z).sub(this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z));
+      if(dir.lengthSq()>.01)p.aim.copy(dir.normalize());
     }
     else{
-      // aim at whatever sits under the centered crosshair; fall back to the raw view ray
-      const targetPoint=this.hoverPoint;
-      if(targetPoint){
-        const solved=this.combat.ballisticDirectionTo?.(p,targetPoint),dir=solved||targetPoint.clone().sub(new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z));this.ballisticOutOfRange=!solved;
-        if(dir.lengthSq()>.01)p.aim.lerp(dir.normalize(),.55).normalize();
+      // exact crosshair convergence: solve from the muzzle (where the round actually
+      // spawns) to the point under the reticle, so the shot lands on the crosshair.
+      // No smoothing on the fired direction — lag here is a guaranteed miss.
+      let targetPoint=(this.hoverPoint&&!mouseMoved&&!mobileMoved)?this.hoverPoint.clone():null;
+      const hovered=Boolean(targetPoint);
+      if(!targetPoint){
+        // nothing (fresh) under the reticle: aim at a far point on the exact crosshair
+        // ray, reconstructed from the shoulder-camera pivot (same rig as updateCamera)
+        const yaw=this.fpsYaw||0,right=new THREE.Vector3(-Math.cos(yaw),0,Math.sin(yaw));
+        targetPoint=p.group.position.clone().add(new THREE.Vector3(0,2.05,0)).addScaledVector(right,.85).addScaledVector(look,Math.max(60,p.weapon?.effectiveRange||45));
       }
-      else p.aim.lerp(look,.55).normalize();
+      const solved=this.combat?.ballisticDirectionTo?.(p,targetPoint);
+      if(hovered)this.ballisticOutOfRange=!solved;
+      const dir=solved||targetPoint.sub(this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z));
+      if(dir.lengthSq()>.01)p.aim.copy(dir.normalize());else p.aim.copy(look);
     }
     p.headPitch=-Math.asin(THREE.MathUtils.clamp(p.aim.y,-1,1))*.55;
     p.group.rotation.y=Math.atan2(p.aim.x,p.aim.z)}
@@ -1120,9 +1137,12 @@ export class Game{
         this.camera.fov=72;
         this.camera.updateProjectionMatrix();
       }
-      const eye=p.group.position.clone().add(new THREE.Vector3(0,1.62,0)).addScaledVector(p.aim,.42);
+      // follow the raw look direction, not p.aim: the aim now carries ballistic
+      // compensation and would otherwise tilt the first-person view upward
+      const fpsLook=this.lookDirection();
+      const eye=p.group.position.clone().add(new THREE.Vector3(0,1.62,0)).addScaledVector(fpsLook,.42);
       this.camera.position.copy(eye);
-      this.camera.lookAt(eye.clone().add(p.aim));
+      this.camera.lookAt(eye.clone().add(fpsLook));
       this.applyCameraShake(dt);
       return;
     }
