@@ -9,8 +9,16 @@ export class Input {
     this.bind();
   }
   bind() {
-    addEventListener('keydown', e => { if (this.enabled && ['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); if (!this.keys.has(e.code)) this.pressed.add(e.code); this.keys.add(e.code); });
-    addEventListener('keyup', e => this.keys.delete(e.code));
+    addEventListener('keydown', e => {
+      if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      if (this.enabled && ['Tab', 'Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
+      if (!this.keys.has(e.code)) this.pressed.add(e.code);
+      this.keys.add(e.code);
+    });
+    addEventListener('keyup', e => {
+      if (document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      this.keys.delete(e.code);
+    });
     addEventListener('blur', () => { this.keys.clear(); this.mouse.down = false; this.mouse.right = false; });
     this.domElement.addEventListener('pointermove', e => {
       if (this.mouse.down || this.mouse.right || document.pointerLockElement) {
