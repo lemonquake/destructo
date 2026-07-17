@@ -31,7 +31,7 @@ export const BLACKSITE_TRANSIT = Object.freeze({
 export function blacksiteBlastWallSegments(){const left=-BLACKSITE_TRANSIT.halfWidth,right=BLACKSITE_TRANSIT.halfWidth,gap=BLACKSITE_TRANSIT.gateHalfWidth;return BLACKSITE_TRANSIT.blastGates.flatMap(({z,x:opening},index)=>{const lw=opening-gap-left,rw=right-(opening+gap),segments=[];if(lw>0)segments.push({x:left+lw/2,z,w:lw,d:2.2,index});if(rw>0)segments.push({x:opening+gap+rw/2,z,w:rw,d:2.2,index});return segments})}
 
 export class World {
-  constructor(scene, materials, factory, mapId = 'crossroads', gameMode = 'deathmatch') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.gameMode = gameMode; this.hasWater = Boolean(this.map.hasWater); this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.dominationTowers = []; this.colliders = []; this.secretPlaces = []; this.missionTargets=[]; this.teamCompounds = {}; this.bounds = gameMode === 'domination' ? 96 : (this.map.bounds || 234); }
+  constructor(scene, materials, factory, mapId = 'crossroads', gameMode = 'deathmatch') { this.scene = scene; this.materials = materials; this.factory = factory; this.map = mapById(mapId); this.gameMode = gameMode; this.hasWater = Boolean(this.map.hasWater); this.waterMaterial = createWaterMaterial(materials.textures.water); this.destructibles = []; this.interactiveStructures = []; this.motorcycles = []; this.cars = []; this.vehicles = []; this.crates = []; this.wildlife = []; this.pickups = []; this.crateDropZones = []; this.dominationTowers = []; this.colliders = []; this.colliderCellSize=24;this.colliderIndex=new Map();this.colliderIndexDirty=true;this.secretPlaces = []; this.missionTargets=[]; this.teamCompounds = {}; this.bounds = gameMode === 'domination' ? 96 : (this.map.bounds || 234); }
   // teams: [{id, color, dark}] — a base + builder pad is raised for each one, spread on a ring
   build(teams = [{ id: 'blue', color: 0x2fb4ff, dark: 0x11638f }, { id: 'red', color: 0xff5062, dark: 0x8e2634 }]) {
     if(this.gameMode==='deathmatch'&&teams.length>(this.map.maxTeams||9))throw new RangeError(`${this.map.title} supports at most ${this.map.maxTeams} teams`);
@@ -72,6 +72,7 @@ export class World {
     this.setupCrateDropZones();
     if(this.gameMode!=='campaign')this.dropOpeningCrates(this.map.id==='crown'?3:7);
     this.populate(); this.buildStructures(); this.buildInteractives(); this.buildDecorations(); this.buildThemedContent(); if(this.gameMode==='deathmatch')this.buildSecretPlaces(); if(this.gameMode==='domination')this.createDominationTowers();
+    this.scene.updateMatrixWorld(true);this.rebuildColliderIndex();
     this.nav = new NavGrid(this); this.nav.rebuild(); return this;
   }
   // ── Team Buddies style rolling hills ───────────────────────────────────────
@@ -99,6 +100,15 @@ export class World {
       if(this.map.id==='gaia-blacksite')return 0;
       return Math.max(0,result);
     };
+    // Height is queried by every moving unit, projectile and footstep. The
+    // original procedural function evaluates dozens of exponential hills per
+    // call, which becomes a frame-time hotspot in 40+ unit battles. Bake it
+    // once and use bilinear samples; rendering and collision share this same
+    // surface, so the approximation cannot cause visual/physics disagreement.
+    const rawHeightAt=this.heightAt,step=2,margin=24,min=-this.bounds-margin,size=Math.ceil((this.bounds*2+margin*2)/step)+1,heights=new Float32Array(size*size);
+    for(let z=0;z<size;z++)for(let x=0;x<size;x++)heights[z*size+x]=rawHeightAt(min+x*step,min+z*step);
+    this.heightAt=(x,z)=>{const gx=(x-min)/step,gz=(z-min)/step;if(gx<0||gz<0||gx>=size-1||gz>=size-1)return rawHeightAt(x,z);const x0=Math.floor(gx),z0=Math.floor(gz),tx=gx-x0,tz=gz-z0,i=z0*size+x0,a=heights[i],b=heights[i+1],c=heights[i+size],d=heights[i+size+1];return(a+(b-a)*tx)+(c+(d-c)*tx-a-(b-a)*tx)*tz};
+    this.heightField={step,min,size,heights};
   }
   terrainGeometry() {
     const size=this.gameMode==='domination'?214:this.bounds*2+32;const segments=this.gameMode==='domination'?120:180;const geo = new THREE.PlaneGeometry(size, size, segments, segments); geo.rotateX(-Math.PI / 2);
@@ -204,13 +214,24 @@ export class World {
   }
   registerCollider(object,options={},entity=null){
     const collider={object,entity,shape:options.shape||'box',halfX:options.halfX||1,halfZ:options.halfZ||1,radius:options.radius||1,top:options.top||0,bottom:options.bottom??-Infinity,blocking:options.blocking!==false,walkable:Boolean(options.walkable),enabled:true};
-    this.colliders.push(collider);if(entity){entity.colliderHandles=entity.colliderHandles||[];entity.colliderHandles.push(collider)}return collider;
+    this.colliders.push(collider);this.colliderIndexDirty=true;if(entity){entity.colliderHandles=entity.colliderHandles||[];entity.colliderHandles.push(collider)}return collider;
   }
   colliderFrame(collider){
-    const position=new THREE.Vector3();collider.object.getWorldPosition?.(position);if(!collider.object.getWorldPosition)position.copy(collider.object.position);
-    const quaternion=new THREE.Quaternion();collider.object.getWorldQuaternion?.(quaternion);const rotation=collider.object.getWorldQuaternion?new THREE.Euler().setFromQuaternion(quaternion,'YXZ').y:(collider.object.rotation?.y||0);
-    return{position,rotation};
+    const frame=collider._frame||(collider._frame={position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),euler:new THREE.Euler(),rotation:0});
+    collider.object.getWorldPosition?.(frame.position);if(!collider.object.getWorldPosition)frame.position.copy(collider.object.position);
+    if(collider.object.getWorldQuaternion){collider.object.getWorldQuaternion(frame.quaternion);frame.rotation=frame.euler.setFromQuaternion(frame.quaternion,'YXZ').y}else frame.rotation=collider.object.rotation?.y||0;
+    return frame;
   }
+  rebuildColliderIndex(){
+    this.colliderIndex.clear();const size=this.colliderCellSize;
+    for(const collider of this.colliders){const frame=this.colliderFrame(collider),extent=collider.shape==='cylinder'?collider.radius:Math.hypot(collider.halfX,collider.halfZ),minX=Math.floor((frame.position.x-extent)/size),maxX=Math.floor((frame.position.x+extent)/size),minZ=Math.floor((frame.position.z-extent)/size),maxZ=Math.floor((frame.position.z+extent)/size);for(let x=minX;x<=maxX;x++)for(let z=minZ;z<=maxZ;z++){const key=`${x},${z}`,cell=this.colliderIndex.get(key);if(cell)cell.push(collider);else this.colliderIndex.set(key,[collider])}}
+    this.colliderIndexDirty=false;
+  }
+  collidersInBounds(minX,maxX,minZ,maxZ){
+    if(this.colliderIndexDirty)this.rebuildColliderIndex();const size=this.colliderCellSize,result=new Set(),cellMinX=Math.floor(minX/size),cellMaxX=Math.floor(maxX/size),cellMinZ=Math.floor(minZ/size),cellMaxZ=Math.floor(maxZ/size);for(let x=cellMinX;x<=cellMaxX;x++)for(let z=cellMinZ;z<=cellMaxZ;z++){const cell=this.colliderIndex.get(`${x},${z}`);if(cell)for(const collider of cell)result.add(collider)}return result;
+  }
+  collidersNear(position,padding=0){return this.collidersInBounds(position.x-padding,position.x+padding,position.z-padding,position.z+padding)}
+  collidersForSegment(start,end,padding=0){return this.collidersInBounds(Math.min(start.x,end.x)-padding,Math.max(start.x,end.x)+padding,Math.min(start.z,end.z)-padding,Math.max(start.z,end.z)+padding)}
   colliderContains(position,collider,padding=0){
     const frame=this.colliderFrame(collider),dx=position.x-frame.position.x,dz=position.z-frame.position.z;
     if(collider.shape==='cylinder')return dx*dx+dz*dz<=(collider.radius+padding)**2;
@@ -218,7 +239,7 @@ export class World {
     return Math.abs(lx)<=collider.halfX+padding&&Math.abs(lz)<=collider.halfZ+padding;
   }
   removeCollidersFor(entity){for(const collider of entity?.colliderHandles||[])collider.enabled=false;this.nav?.invalidate();}
-  walkableTopAt(position){let top=null;for(const collider of this.colliders){if(!collider.enabled||!collider.walkable||collider.entity?.dead||!this.colliderContains(position,collider,.08))continue;const y=this.colliderFrame(collider).position.y+collider.top;if(top===null||y>top)top=y;}return top;}
+  walkableTopAt(position){let top=null;for(const collider of this.collidersNear(position,.08)){if(!collider.enabled||!collider.walkable||collider.entity?.dead||!this.colliderContains(position,collider,.08))continue;const y=this.colliderFrame(collider).position.y+collider.top;if(top===null||y>top)top=y;}return top;}
   groundAt(position) { const terrain=this.heightAt(position.x, position.z),platform=this.walkableTopAt(position);return platform===null?terrain:Math.max(terrain,platform); }
   walkablePosition(position,radius=.72,maxRing=12){const result=position.clone();if(this.nav?.blockedAt(result.x,result.z,radius)){const cell=this.nav.nearestFreeCell(this.nav.cellX(result.x),this.nav.cellZ(result.z),maxRing);if(cell)result.copy(this.nav.toWorld(cell.cx,cell.cz))}result.y=this.groundAt(result);return result}
   deploymentPosition(teamId,index=0,radius=.72){const slots=this.deploymentPositions?.[teamId];if(!slots?.length)return null;return this.walkablePosition(slots[index%slots.length],radius)}
@@ -906,7 +927,7 @@ export class World {
     }
   }
   navigationBlockedAt(position,radius=.72,entity=null){
-    for(const collider of this.colliders){if(!collider.enabled||!collider.blocking||collider.entity?.dead||collider.entity===entity)continue;if(this.colliderContains(position,collider,radius))return true;}
+    for(const collider of this.collidersNear(position,radius)){if(!collider.enabled||!collider.blocking||collider.entity?.dead||collider.entity===entity)continue;if(this.colliderContains(position,collider,radius))return true;}
     const circles=[...this.destructibles,...this.interactiveStructures,...Object.values(this.baseTurrets||{}),...Object.values(this.factories||{})];
     for(const obstacle of circles){if(!obstacle||obstacle===entity||obstacle.dead||obstacle.colliderHandles?.length)continue;const min=radius+(obstacle.radius||1),dx=position.x-obstacle.group.position.x,dz=position.z-obstacle.group.position.z;if(dx*dx+dz*dz<min*min)return true;}
     return false;
@@ -934,7 +955,7 @@ export class World {
 
     // Geometry-aware blockers are used for authored buildings, ruins, tower
     // cores and other large props. Walkable floors deliberately do not block.
-    for(const collider of this.colliders){
+    for(const collider of this.collidersNear(pos,r1)){
       if(!collider.enabled||!collider.blocking||collider.entity?.dead||collider.entity===entity)continue;
       const frame=this.colliderFrame(collider),top=frame.position.y+collider.top;
       if(pos.y>=top-1.05)continue;

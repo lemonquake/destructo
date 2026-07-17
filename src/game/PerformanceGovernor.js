@@ -14,12 +14,14 @@ export class PerformanceGovernor {
     this.overlayTimer = 0;
     this.warmupRemaining = 2;
     this.effects = null;
+    this.shadowPreference=Boolean(renderer.shadowMap?.enabled);
     this.lastDiagnostics = null;
     const query = options.query ?? globalThis.location?.search ?? '';
     if (new URLSearchParams(query).get('perf') === '1' && globalThis.document?.body) this.createOverlay();
   }
 
   setEffects(effects) { this.effects = effects; this.applyQuality(); }
+  setShadowPreference(enabled){this.shadowPreference=Boolean(enabled);this.applyQuality()}
   beginSession() { this.sampleCount=0;this.sampleCursor=0;this.lowSeconds=0;this.recoverySeconds=0;this.evaluateTimer=0;this.warmupRemaining=2; }
 
   createOverlay() {
@@ -75,12 +77,12 @@ export class PerformanceGovernor {
     this.applyQuality();
   }
 
-  applyQuality() { this.effects?.setQuality?.(this.quality); }
+  applyQuality() { this.effects?.setQuality?.(this.quality);if(this.renderer.shadowMap){const enabled=this.shadowPreference&&this.quality>=.45;if(this.renderer.shadowMap.enabled!==enabled){this.renderer.shadowMap.enabled=enabled;if(enabled)this.renderer.shadowMap.needsUpdate=true}} }
 
   updateOverlay() {
     const fps = 1 / this.averageFrameTime();
     const d = this.lastDiagnostics || {};
     const info = this.renderer.info?.render || {};
-    this.overlay.textContent = `FPS ${fps.toFixed(1)}  FRAME ${(1000 / Math.max(1, fps)).toFixed(1)}ms\nDRAWS ${info.calls || 0}  TRI ${info.triangles || 0}\nSHOTS ${d.active || 0}/2048  DENIED ${d.denied || 0}\nEFFECTS ${d.effects || 0}  POOL ${d.poolUsage || 0}%\nPIXEL ${this.pixelRatio.toFixed(2)}  FX ${Math.round(this.quality * 100)}%`;
+    this.overlay.textContent = `FPS ${fps.toFixed(1)}  FRAME ${(1000 / Math.max(1, fps)).toFixed(1)}ms\nCPU ${(d.updateMs||0).toFixed(1)}ms  RENDER ${(d.renderMs||0).toFixed(1)}ms\nAI ${(d.aiMs||0).toFixed(1)}ms  SYSTEMS ${(d.systemsMs||0).toFixed(1)}ms\nDRAWS ${info.calls || 0}  TRI ${info.triangles || 0}\nSHOTS ${d.active || 0}/2048  DENIED ${d.denied || 0}\nEFFECTS ${d.effects || 0}  POOL ${d.poolUsage || 0}%\nPIXEL ${this.pixelRatio.toFixed(2)}  FX ${Math.round(this.quality * 100)}%`;
   }
 }

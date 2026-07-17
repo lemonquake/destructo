@@ -13,6 +13,14 @@ describe('debug code',()=>{
     expect(friendly.ammo).toBe(DEBUG_AMMO);expect(enemy.ammo).toBe(34);
   });
 
+  it('accepts quakelemon and grants 5000 tickets',()=>{
+    const earnTickets=vi.fn();
+    const game={save:{earnTickets}};
+    expect(Game.prototype.activateDebugCode.call(game,'quakelemon')).toBe(true);
+    expect(earnTickets).toHaveBeenCalledWith(5000);
+  });
+
+
   it('bypasses campaign prerequisites without marking missions complete',()=>{
     const save={campaignCompleted:vi.fn(()=>false)},game={debugMode:false,save};
     expect(Game.prototype.campaignMissionUnlocked.call(game,CAMPAIGN_MISSIONS['gold-rush'])).toBe(false);

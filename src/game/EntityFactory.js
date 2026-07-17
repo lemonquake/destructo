@@ -70,11 +70,12 @@ export class EntityFactory {
     auraRing.rotation.x = -Math.PI / 2; auraRing.position.y = .045; group.add(auraRing);
     // glowing yellow eyes, parented to the head so they follow every head animation
     const eyeMat = new THREE.MeshBasicMaterial({ color: 0xffe23f });
+    const faceDetails=[];
     [-.24, .24].forEach(x => {
-      const eye = mesh(GEO.eye, eyeMat, false); eye.position.set(x, .08, .44); head.add(eye);
-      const glow = mesh(new THREE.PlaneGeometry(.4, .3), new THREE.MeshBasicMaterial({ color: 0xffe23f, transparent: true, opacity: .35, depthWrite: false }), false); glow.position.set(x, .08, .46); head.add(glow);
+      const eye = mesh(GEO.eye, eyeMat, false); eye.position.set(x, .08, .44); head.add(eye);faceDetails.push(eye);
+      const glow = mesh(new THREE.PlaneGeometry(.4, .3), new THREE.MeshBasicMaterial({ color: 0xffe23f, transparent: true, opacity: .35, depthWrite: false }), false); glow.position.set(x, .08, .46); head.add(glow);faceDetails.push(glow);
     });
-    const mouth = mesh(new THREE.BoxGeometry(.3, .06, .05), this.materials.color(0x11131e), false); mouth.position.set(0, -.24, .44); head.add(mouth);
+    const mouth = mesh(new THREE.BoxGeometry(.3, .06, .05), this.materials.color(0x11131e), false); mouth.position.set(0, -.24, .44); head.add(mouth);faceDetails.push(mouth);
     const leftHand = mesh(GEO.hand, skin), rightHand = mesh(GEO.hand, skin); leftHand.position.set(-.78, 1.24, .12); rightHand.position.set(.78, 1.24, .12); group.add(leftHand, rightHand);
     const leftBoot = mesh(GEO.boot, dark), rightBoot = mesh(GEO.boot, dark); leftBoot.position.set(-.33, .22, .03); rightBoot.position.set(.33, .22, .03); group.add(leftBoot, rightBoot);
     const weaponGroup = new THREE.Group(); weaponGroup.position.set(.72, 1.22, .72); group.add(weaponGroup);
@@ -86,7 +87,7 @@ export class EntityFactory {
     if (grade === 'elite') { const stripe = mesh(new THREE.TorusGeometry(.68, .07, 6, 14), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .6 })); stripe.rotation.x = Math.PI / 2; stripe.position.y = 1.55; group.add(stripe); }
     if (grade === 'special') { group.scale.setScalar(1.12); const core = mesh(new THREE.OctahedronGeometry(.22, 0), this.materials.color(0xa4ecff, { emissive: 0x2fa0e0, emissiveIntensity: 1.5 }), false); core.position.set(0, 1.35, .58); group.add(core); const halo = mesh(new THREE.TorusGeometry(.92, .05, 6, 20), this.materials.color(0x9fe8ff, { emissive: 0x2fa0e0, emissiveIntensity: 1.1 }), false); halo.rotation.x = Math.PI / 2; halo.position.y = .12; group.add(halo); }
     const primaryWeaponId=def.weapon==='pistol'?null:def.weapon;
-    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, hat:opts.hat||null, boots:opts.boots||null, attachment:opts.attachment||null, projectileStyle:opts.projectile||null, deathEffect:opts.deathEffect||null, killEffect:opts.killEffect||null, jetpack:Boolean(opts.jetpack), jetpackRig, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, jetpackBurn:0, jetpackActive:false, doubleJumped:false, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
+    const entity = { id: crypto.randomUUID(), type: 'unit', team, classId, classDef: def, grade, passive: opts.passive || null, active: opts.active || null, group, body, head, bodyAura, headAura, auraGlow, auraRing, leftHand, rightHand, leftBoot, rightBoot, weaponGroup, renderDetails:{aura:[bodyAura,headAura,auraGlow,auraRing],face:faceDetails,limbs:[leftHand,rightHand,leftBoot,rightBoot]},renderLod:0,hat:opts.hat||null, boots:opts.boots||null, attachment:opts.attachment||null, projectileStyle:opts.projectile||null, deathEffect:opts.deathEffect||null, killEffect:opts.killEffect||null, jetpack:Boolean(opts.jetpack), jetpackRig, hp: def.hp, maxHp: def.hp, mp: def.mp, maxMp: def.mp, shield: 0, weaponId: def.weapon, weapon: WEAPONS[def.weapon], weaponTier: 0, primaryWeaponId, primaryWeapon:primaryWeaponId?WEAPONS[primaryWeaponId]:null, primaryWeaponTier:0, seekingReplacement:false, grenades: 0, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), radius: .72, state: 'grounded', stun: 0, freeze: 0, fireCooldown: 0, abilityCooldown: 0, statusTimer: 0, recoil: 0, verticalVelocity: 0, jetpackBurn:0, jetpackActive:false, doubleJumped:false, buffs: { speed: 0, damage: 0, rapid: 0 }, dead: false, player, carriedCrate: null, kills: 0, animationSeed: Math.random() * 10, attackStyle: Math.floor(Math.random() * 3), groundY: position.y, dangerCooldown: 0, dangerTimer: 0 };
     this.setWeaponModel(entity, def.weapon, WEAPONS[def.weapon]);
     this.applyPassive(entity);
     if(entity.primaryWeaponId)entity.primaryWeapon=entity.weapon;
@@ -608,7 +609,7 @@ export class EntityFactory {
       }
       e.weaponGroup.visible = false;
     }
-    else e.weaponGroup.visible = true;
+    else e.weaponGroup.visible = e.renderLod !== 2;
     // ── apply the composed pose in one pass
     e.body.position.set(0, bodyY, bodyZ); e.body.rotation.set(pitch, twist, roll);
     e.head.position.set(0, headY, headZ); e.head.rotation.set(headPitch, headYaw, headRoll);

@@ -97,8 +97,8 @@ describe('themed map roster', () => {
   });
 
   it('supports walkable platform tops and removable geometry blockers',()=>{
-    const world={colliders:[],heightAt:()=>0,destructibles:[],interactiveStructures:[],baseTurrets:{},factories:{}};
-    for(const name of ['registerCollider','colliderFrame','colliderContains','walkableTopAt','groundAt','removeCollidersFor','resolveCollisions'])world[name]=World.prototype[name];
+    const world={colliders:[],heightAt:()=>0,destructibles:[],interactiveStructures:[],baseTurrets:{},factories:{},colliderCellSize:24,colliderIndex:new Map(),colliderIndexDirty:true};
+    for(const name of ['registerCollider','colliderFrame','colliderContains','walkableTopAt','groundAt','removeCollidersFor','resolveCollisions','collidersNear','collidersInBounds','rebuildColliderIndex'])world[name]=World.prototype[name];
     const platform=new THREE.Object3D();platform.position.y=1;world.registerCollider(platform,{shape:'box',halfX:3,halfZ:3,top:.5,blocking:false,walkable:true});
     expect(world.groundAt(new THREE.Vector3(1,0,1))).toBe(1.5);
     const blocker=new THREE.Object3D(),owner={dead:false};world.registerCollider(blocker,{shape:'box',halfX:1,halfZ:1,top:3},owner);const mover={group:{position:new THREE.Vector3(.5,0,0)},radius:.5};world.resolveCollisions(mover);expect(Math.abs(mover.group.position.x)).toBe(1.5);world.removeCollidersFor(owner);expect(owner.colliderHandles.every(c=>!c.enabled)).toBe(true);

@@ -90,6 +90,10 @@ export class AIController {
   chooseTargetTeam(myTeam, force=false) {
     const brain=this.brainFor(myTeam);brain.reassessIn=Math.max(0,brain.reassessIn||0);
     if(brain.suddenDeath&&!force&&this.targetIsValid(myTeam,brain.targetTeam))return brain.targetTeam;
+    // Every unit on a team shares this brain. Re-scoring all enemy teams for
+    // every unit, every frame made strategic work grow cubically in large
+    // matches. Keep the selected target until the team's reassessment expires.
+    if(!force&&brain.reassessIn>0&&this.targetIsValid(myTeam,brain.targetTeam))return brain.targetTeam;
     const candidates=this.getTeams().filter(t=>this.isHostile(myTeam,t.id)&&this.targetIsValid(myTeam,t.id));
     if(!candidates.length){brain.targetTeam=null;brain.targetScore=-Infinity;return null;}
     let best=null,bestScore=-Infinity;for(const t of candidates){const score=this.targetScore(myTeam,t.id);if(score>bestScore){best=t.id;bestScore=score;}}

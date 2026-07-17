@@ -56,6 +56,7 @@ const stableCrosshairPoint=(game,origin,look,minForward)=>{
 const DESTRUCTIBLE_SUPPLIES=Object.freeze({ammo:Object.freeze({id:'ammo',name:'Ammo Pack',color:0xffc44a}),health:Object.freeze({id:'health',name:'Health Pack',color:0x59e065})});
 export const DEBUG_CODE='bugde',DEBUG_AMMO=5000;
 export function rollDestructibleSupply(random=Math.random){const roll=random();return roll<.2?DESTRUCTIBLE_SUPPLIES.ammo:roll<.4?DESTRUCTIBLE_SUPPLIES.health:null;}
+export function unitRenderLod(distanceSquared,quality=1){const near=quality<.45?24:quality<.75?34:48,far=quality<.45?52:quality<.75?74:110;return distanceSquared>far*far?2:distanceSquared>near*near?1:0}
 
 export class Game{
   constructor(mount){this.mount=mount;this.screen=document.querySelector('#screen');this.save=new SaveSystem();this.debugMode=Boolean(this.save.data.debugMode);this.league=new LeagueSystem(this.save.data.aiProfiles);this.input=new Input(mount);this.hud=new HUD();this.minimap=new Minimap(document.querySelector('#minimap'),p=>this.scoutFromMinimap(p));this.observerMinimap=new Minimap(document.querySelector('#observer-minimap'),p=>this.observerMapCommand(p));this.audio=new AudioSystem(this.save.data.settings.volume);this.audio.setMusicMuted(this.save.data.settings.musicMuted);this.audio.setSoundsMuted(this.save.data.settings.soundsMuted);this.lastFrame=performance.now()/1000;this.state='menu';this.running=false;this.entities=[];this.combatants=[];this.kills=0;this.elapsed=0;this.lockTarget=null;this.hoverEntity=null;this.setup=defaultTeamSetup(4);this.matchSetup=freshMatchSetup();this.selectedMode='deathmatch';this.selectedMap=DEFAULT_MAP_ID;this.selectedDimensionIndex=0;this.teamStats={};this.aiBehaviorIndex=0;this.paypalModalActive=false;this.bindUI()}
@@ -92,7 +93,7 @@ export class Game{
     this.screen.addEventListener('input',e=>{if(e.target.dataset.teamName!==undefined){const i=Number(e.target.dataset.teamName);this.setup[i].name=e.target.value.slice(0,14);return}
       if(e.target.dataset.startingClass!==undefined){this.matchSetup.startingClasses[Number(e.target.dataset.startingClass)]=e.target.value;return}
       if(e.target.dataset.setupRule){const key=e.target.dataset.setupRule;this.matchSetup[key]=e.target.type==='checkbox'?e.target.checked:(key==='aiDifficulty'?e.target.value:Number(e.target.value));if(key==='squadSize')this.showGameSetup();return}
-      if(!e.target.dataset.setting)return;const key=e.target.dataset.setting,value=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);this.save.setSetting(key,value);if(key==='volume')this.audio.setVolume(value);if(key==='musicMuted')this.audio.setMusicMuted(value);if(key==='soundsMuted')this.audio.setSoundsMuted(value);if(key==='shadows'&&this.renderer)this.renderer.shadowMap.enabled=value});
+      if(!e.target.dataset.setting)return;const key=e.target.dataset.setting,value=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);this.save.setSetting(key,value);if(key==='volume')this.audio.setVolume(value);if(key==='musicMuted')this.audio.setMusicMuted(value);if(key==='soundsMuted')this.audio.setSoundsMuted(value);if(key==='shadows'&&this.renderer)this.performanceGovernor?.setShadowPreference(value)});
     this.screen.addEventListener('submit',e=>{if(!e.target.matches('[data-code-form]'))return;e.preventDefault();this.submitDebugCode(e.target.querySelector('[data-debug-code]')?.value)});
     addEventListener('keydown',e=>{if(this.state!=='missions'||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'))return;e.preventDefault();this.audio.play('button_click');this.cycleDimension(e.key==='ArrowRight'?1:-1)})}
   // ── Live menu backdrop: a silent 3D vignette that plays behind every menu ──
@@ -137,8 +138,30 @@ export class Game{
   debugCodeEntry(){return`<form class="code-entry ${this.debugMode?'active':''}" data-code-form><label for="debug-code">CODE</label><div><input id="debug-code" name="code" data-debug-code type="text" autocomplete="off" spellcheck="false" ${this.debugMode?'disabled':''} placeholder="ENTER CODE"><button class="btn ${this.debugMode?'':'primary'}" type="submit" ${this.debugMode?'disabled':''}>${this.debugMode?'ACTIVE':'ENTER'}</button></div><small class="${this.codeMessage?.startsWith('INVALID')?'error':''}">${this.codeMessage||(this.debugMode?'DEBUG MODE · ALL MISSIONS UNLOCKED · 5000 PRIMARY AMMO':'ENTER A CODE TO UNLOCK SPECIAL MODES')}</small></form>`}
   campaignMissionUnlocked(mission){return Boolean(mission&&(this.debugMode||!mission.requires||this.save.campaignCompleted(mission.requires)))}
   debugAmmoFor(unit,ammo){return this.debugMode&&unit?.team===this.playerTeam?DEBUG_AMMO:ammo}
-  activateDebugCode(value){if(String(value??'').trim().toLowerCase()!==DEBUG_CODE)return false;this.debugMode=true;this.save.data.debugMode=true;this.save.commit();for(const unit of this.combatants||[])if(unit?.type==='unit'&&unit.team===this.playerTeam)unit.ammo=DEBUG_AMMO;return true}
-  submitDebugCode(value){const activated=this.activateDebugCode(value);this.codeMessage=activated?'DEBUG MODE ACTIVE':'INVALID CODE';if(this.state==='paused')this.showPauseMenu(true);else this.showSettings();return activated}
+  activateDebugCode(value){
+    const code = String(value??'').trim().toLowerCase();
+    if (code === 'quakelemon') {
+      this.save.earnTickets(5000);
+      return true;
+    }
+    if(code!==DEBUG_CODE)return false;
+    this.debugMode=true;
+    this.save.data.debugMode=true;
+    this.save.commit();
+    for(const unit of this.combatants||[])if(unit?.type==='unit'&&unit.team===this.playerTeam)unit.ammo=DEBUG_AMMO;
+    return true;
+  }
+  submitDebugCode(value){
+    const code = String(value??'').trim().toLowerCase();
+    const activated=this.activateDebugCode(value);
+    if (code === 'quakelemon') {
+      this.codeMessage = activated ? '5000 TICKETS GRANTED' : 'INVALID CODE';
+    } else {
+      this.codeMessage=activated?'DEBUG MODE ACTIVE':'INVALID CODE';
+    }
+    if(this.state==='paused')this.showPauseMenu(true);else this.showSettings();
+    return activated;
+  }
   showShop(){this.showDBuild()}
   // D-Build studio: buy + equip cosmetics for your team's Destructos
   showDBuild(category='featured'){
@@ -328,13 +351,16 @@ export class Game{
     const track = mapMusic[this.mission.mapId||this.selectedMap] || (this.mission.id==='four-of-a-kind'?'/music/neutral_mayhem.mp3':this.mission.id==='gold-rush'?'/music/king_of_the_hill.mp3':'/music/urban_vehicle_warfare.mp3');
     this.audio.playMusic(track);
   }
+  startPerformanceStressTest(){this.selectedMode='deathmatch';this.selectedMap=DEFAULT_MAP_ID;const teamCount=ALL_MAPS[DEFAULT_MAP_ID]?.maxTeams||MAX_PLAYERS;this.setup=defaultTeamSetup(teamCount).map((team,index)=>({...team,isHuman:false,group:index}));this.matchSetup=freshMatchSetup({squadSize:5,aiDifficulty:'veteran',reinforcements:true,reinforcementSeconds:5});return this.startMission('skirmish')}
   teamCosmetics(){const eq=this.save.data.equipped;return{hat:eq.hat||undefined,skin:eq.skin||undefined,boots:eq.boots||undefined,attachment:eq.attachment||undefined,projectile:eq.projectile||undefined,deathEffect:eq.deathEffect||undefined,killEffect:eq.killEffect||undefined}}
   // ── alliance helpers ────────────────────────────────────────────────────────
   hostile(a,b){const A=this.teamMap?.[a],B=this.teamMap?.[b];if(!A||!B)return a!==b;return A.group!==B.group}
-  livingUnits(teamId){return this.combatants.filter(e=>e.team===teamId&&e.type==='unit'&&!e.dead&&!e.decoy)}
+  rebuildCombatantIndex(){const livingByTeam=new Map(),activeByTeam=new Map();for(const e of this.combatants||[]){if(e.dead||!e.team)continue;let active=activeByTeam.get(e.team);if(!active){active=[];activeByTeam.set(e.team,active)}active.push(e);if(e.type==='unit'&&!e.decoy){let living=livingByTeam.get(e.team);if(!living){living=[];livingByTeam.set(e.team,living)}living.push(e)}}this._livingByTeam=livingByTeam;this._activeByTeam=activeByTeam;this._friendsByTeam=new Map();this._foesByTeam=new Map();for(const team of this.teams||[]){const friends=[],foes=[];for(const other of this.teams||[]){const list=activeByTeam.get(other.id)||[];(this.hostile(team.id,other.id)?foes:friends).push(...list)}this._friendsByTeam.set(team.id,friends);this._foesByTeam.set(team.id,foes)}this._combatantIndexDirty=false}
+  ensureCombatantIndex(){if(this._combatantIndexDirty||!this._livingByTeam)this.rebuildCombatantIndex()}
+  livingUnits(teamId){this.ensureCombatantIndex();return this._livingByTeam.get(teamId)||[]}
   controllableUnits(teamId){return this.livingUnits(teamId).filter(e=>!e.missionVIP)}
-  friendsOf(u){return this.combatants.filter(e=>!e.dead&&e.team&&!this.hostile(u.team,e.team))}
-  foesOf(u){return this.combatants.filter(e=>!e.dead&&e.team&&this.hostile(u.team,e.team))}
+  friendsOf(u){this.ensureCombatantIndex();return this._friendsByTeam.get(u.team)||[]}
+  foesOf(u){this.ensureCombatantIndex();return this._foesByTeam.get(u.team)||[]}
   respawnPos(teamId,i=0){return resolveRespawnPosition(this.world,teamId,i)}
   async createMission(){this.disposeScene();this.scene=new THREE.Scene();this.materials=await new MaterialLibrary(this.renderer,this.save.data.settings).load();this.factory=new EntityFactory(this.scene,this.materials);
     // teams: skirmish uses the Game Setup config; classic missions run a default 2-team layout
@@ -347,7 +373,7 @@ export class Game{
     if(isCampaign&&this.mission.id==='gold-rush'){const enemyFactory=this.world.factories[this.teams.find(t=>t.id!==this.playerTeam).id];enemyFactory.invulnerable=true;enemyFactory.hp=enemyFactory.maxHp=99999;}
     if(isCampaign&&this.mission.rules?.playerBaseInvulnerable){const home=this.world.factories[this.playerTeam];home.invulnerable=true;home.hp=home.maxHp=99999;}
     if(this.gameMode==='domination')for(const factory of Object.values(this.world.factories)){factory.invulnerable=true;factory.group.traverse(o=>{if(o.isMesh)o.material?.emissive?.setHex?.(this.teamMap[factory.team]?.dark||0x111111)});}
-    this.combatants=[...Object.values(this.world.baseTurrets||{})];this.entities=[...Object.values(this.world.factories),...this.combatants,...this.world.destructibles,...this.world.interactiveStructures,...this.world.motorcycles,...this.world.cars,...this.world.wildlife];this.abilityZones=[];this.objectiveProgress=0;this.lockTarget=null;this.turretLockTarget=null;this.hoverEntity=null;
+    this.combatants=[...Object.values(this.world.baseTurrets||{})];this._combatantIndexDirty=true;this.entities=[...Object.values(this.world.factories),...this.combatants,...this.world.destructibles,...this.world.interactiveStructures,...this.world.motorcycles,...this.world.cars,...this.world.wildlife];this.abilityZones=[];this.objectiveProgress=0;this.lockTarget=null;this.turretLockTarget=null;this.hoverEntity=null;
     this.healLinks=[];this.overheadIcons=[];this.debris=[];this.thrownGrenades=[];this.healAim=false;this.grappleAim=false;this.grapples=[];this.aiHealTimer=0;this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setTurretMode(false);this.hud.clearSquad();
     this.teamStats={};
     for(const t of this.teams){
@@ -491,7 +517,7 @@ export class Game{
   updateCampaignCelebration(dt){const hero=this.campaignVictoryHero;if(!hero)return;this.campaignVictoryAngle=(this.campaignVictoryAngle||0)+dt*.5;this.factory?.animateUnit?.(hero,performance.now()/1000,dt);const focus=hero.group.position.clone().add(new THREE.Vector3(0,1.2,0)),desired=focus.clone().add(new THREE.Vector3(Math.sin(this.campaignVictoryAngle)*6,3.2,Math.cos(this.campaignVictoryAngle)*6));this.camera.position.lerp(desired,1-Math.pow(.002,dt));this.camera.lookAt(focus)}
   addLights(){const hemi=new THREE.HemisphereLight(0xd8f0ff,0x3f5a36,.95);this.scene.add(hemi);const sun=new THREE.DirectionalLight(0xfff6d8,1.7);sun.position.set(-45,78,-35);sun.castShadow=true;sun.shadow.mapSize.set(1536,1536);sun.shadow.camera.left=sun.shadow.camera.bottom=-78;sun.shadow.camera.right=sun.shadow.camera.top=78;sun.shadow.camera.near=.5;sun.shadow.camera.far=210;sun.shadow.bias=-.0008;this.sun=sun;this.scene.add(sun);this.scene.add(sun.target)}
   configureModeUnit(unit){if(this.gameMode!=='domination')return unit;this.equipPrimaryWeapon(unit,DOMINATION_RULES.weaponId,WEAPONS[DOMINATION_RULES.weaponId],this.matchRules?.startingAmmo??90,0);return unit}
-  addUnit(classId,team,pos,opts={}){const cosmetics=!this.observerOnly&&team===this.playerTeam?this.teamCosmetics():{};const modeClass=this.gameMode==='domination'?DOMINATION_RULES.classId:classId;const unit=this.factory.createUnit(modeClass,team,pos,false,{...cosmetics,skin:this.teamMap[team]?.uniform,...opts});this.configureModeUnit(unit);unit.groundY=this.world.groundAt(unit.group.position);unit.ammo=this.debugAmmoFor(unit,this.matchRules?.startingAmmo??90);this.combatants.push(unit);this.entities.push(unit);this.recordDestructoCreated(unit);return unit}
+  addUnit(classId,team,pos,opts={}){const cosmetics=!this.observerOnly&&team===this.playerTeam?this.teamCosmetics():{};const modeClass=this.gameMode==='domination'?DOMINATION_RULES.classId:classId;const unit=this.factory.createUnit(modeClass,team,pos,false,{...cosmetics,skin:this.teamMap[team]?.uniform,...opts});this.configureModeUnit(unit);unit.groundY=this.world.groundAt(unit.group.position);unit.ammo=this.debugAmmoFor(unit,this.matchRules?.startingAmmo??90);this.combatants.push(unit);this._combatantIndexDirty=true;this.entities.push(unit);this.recordDestructoCreated(unit);return unit}
   update(dt,time){
     if(this.state==='paused'){if(this.input.consume('Escape'))this.resumeGame();this.input.endFrame();return;}
     if(this.menuStage&&this.scene===this.menuScene&&MENU_BACKDROP_STATES.has(this.state)){this.menuStage.update(dt,time,this.camera);return;}
@@ -501,15 +527,18 @@ export class Game{
     dt=Math.min(dt,.033);
     this.elapsed += dt;
     this.world.elapsed = this.elapsed;
-    this.allies=this.combatants.filter(e=>!this.hostile(this.playerTeam,e.team));
-    this.enemies=this.combatants.filter(e=>this.hostile(this.playerTeam,e.team));
+    this.ensureCombatantIndex();
+    this.allies=this.friendsOf({team:this.playerTeam});
+    this.enemies=this.foesOf({team:this.playerTeam});
     if(this.state==='mission'){if(this.input.consume('KeyV'))this.campaignActive?this.handleCampaignCommand():this.cycleAIBehavior(1);if(this.input.consume('KeyC')&&!this.campaignActive)this.cycleAIBehavior(-1);this.updatePlayer(dt);this.updateGrapples(dt)}
-    const foesByTeam={};for(const t of this.teams){const list=this.combatants.filter(e=>!e.dead&&this.hostile(t.id,e.team));if(this.gameMode!=='domination'&&!(this.campaignActive&&this.mission.id==='golden-shield'))for(const tid of Object.keys(this.world.factories)){const f=this.world.factories[tid];if(!f.dead&&this.hostile(t.id,tid))list.push(f)}foesByTeam[t.id]=list}
+    const perfStart=performance.now(),foesByTeam={};for(const t of this.teams){const list=[...this.foesOf({team:t.id})];if(this.gameMode!=='domination'&&!(this.campaignActive&&this.mission.id==='golden-shield'))for(const tid of Object.keys(this.world.factories)){const f=this.world.factories[tid];if(!f.dead&&this.hostile(t.id,tid))list.push(f)}foesByTeam[t.id]=list}
     for(const e of this.combatants)this.ai.update(e,dt,foesByTeam[e.team]||[]);
+    const afterAI=performance.now();
     this.updateWeaponFallbacks();
     this.updateFootsteps(dt);
-    this.combat.update(dt);this.updateMotorcycles(dt);this.world.update(time,dt,this.particles);this.updateWildlife(dt);this.updateObjective(dt);this.updateDomination(dt);this.updateCampaignMission(dt,time);this.updateAbilityZones(dt);this.updatePickups(dt);this.updateThrownGrenades(dt);this.updateBaseTurrets(dt);this.updateHealLinks(dt);this.updateOverheadIcons(dt);this.updateOverheadBars(dt);this.updateDebris(dt);this.particles.update(dt,this.camera);
-    for(const e of this.combatants){for(const key of ['abilityCooldown','statusTimer','overdriveTimer','rallyTimer','barrierTimer','frenzyTimer','paceAura'])e[key]=Math.max(0,(e[key]||0)-dt);if(e.buffs)for(const key of Object.keys(e.buffs))e.buffs[key]=Math.max(0,e.buffs[key]-dt);if(e.freeze>0&&e===this.player)e.freeze=Math.max(0,e.freeze-dt);if(e.cloakTimer>0){e.cloakTimer=Math.max(0,e.cloakTimer-dt);if(e.cloakTimer===0)this.setCloak(e,false)}if(!e.dead&&e.passive?.id==='regen')e.hp=Math.min(e.maxHp,e.hp+dt*2.5);if(!e.dead&&e.passive?.id==='healeraura'){for(const f of this.friendsOf(e))if(f!==e&&f.group.position.distanceTo(e.group.position)<6)f.hp=Math.min(f.maxHp,f.hp+dt*1.5)}if(!e.dead&&e.passive?.id==='swift'){for(const f of this.friendsOf(e))if(f!==e&&f.type==='unit'&&f.group.position.distanceTo(e.group.position)<6)f.paceAura=.3}if(Number.isFinite(e.maxMp))e.mp=Math.min(e.maxMp,e.mp+dt*3.5*(e.passive?.id==='manabattery'?1.6:1));if(e.type==='unit'){e.firstPerson=e===this.player&&this.fpsMode;this.positionCarriedCrate(e);this.factory.animateUnit(e,time,dt)}}
+    this.combat.update(dt);this.updateMotorcycles(dt);this.world.update(time,dt,this.particles);this.updateWildlife(dt);this.updateObjective(dt);this.updateDomination(dt);this.updateCampaignMission(dt,time);this.updateAbilityZones(dt);this.updatePickups(dt);this.updateThrownGrenades(dt);this.updateBaseTurrets(dt);this.updateHealLinks(dt);this.updateOverheadIcons(dt);this.updateOverheadBars(dt);this.updateDebris(dt);this.particles.update(dt,this.camera);const afterSystems=performance.now();
+    for(const e of this.combatants){for(const key of ['abilityCooldown','statusTimer','overdriveTimer','rallyTimer','barrierTimer','frenzyTimer','paceAura'])e[key]=Math.max(0,(e[key]||0)-dt);if(e.buffs)for(const key of Object.keys(e.buffs))e.buffs[key]=Math.max(0,e.buffs[key]-dt);if(e.freeze>0&&e===this.player)e.freeze=Math.max(0,e.freeze-dt);if(e.cloakTimer>0){e.cloakTimer=Math.max(0,e.cloakTimer-dt);if(e.cloakTimer===0)this.setCloak(e,false)}if(!e.dead&&e.passive?.id==='regen')e.hp=Math.min(e.maxHp,e.hp+dt*2.5);if(!e.dead&&e.passive?.id==='healeraura'){for(const f of this.friendsOf(e))if(f!==e&&f.group.position.distanceToSquared(e.group.position)<36)f.hp=Math.min(f.maxHp,f.hp+dt*1.5)}if(!e.dead&&e.passive?.id==='swift'){for(const f of this.friendsOf(e))if(f!==e&&f.type==='unit'&&f.group.position.distanceToSquared(e.group.position)<36)f.paceAura=.3}if(Number.isFinite(e.maxMp))e.mp=Math.min(e.maxMp,e.mp+dt*3.5*(e.passive?.id==='manabattery'?1.6:1));if(e.type==='unit'){e.firstPerson=e===this.player&&this.fpsMode;this.positionCarriedCrate(e);this.factory.animateUnit(e,time,dt)}}
+    this.updateUnitRenderLod(dt);
     this.updateAIHealers(dt);
     if(!this.campaignActive)this.updateTeams(dt);this.updateDanger(dt);
     if(this.state==='mission'){
@@ -583,6 +612,7 @@ export class Game{
       this.minimap.update(this.world,this.teams,this.combatants,this.player,null,this.elapsed);
     }
     this.audio.updateListener(this.camera);
+    this._perfBreakdown={aiMs:afterAI-perfStart,systemsMs:afterSystems-afterAI};
     this.input.endFrame()}
   triggerSuddenDeath(){
     this.suddenDeathActive=true;
@@ -657,6 +687,10 @@ export class Game{
       const shouldTrickle=this.gameMode==='domination'||this.observerOnly||t.id!==this.playerTeam;if(shouldTrickle&&canReinforce){t.reinforceTimer-=dt;if(t.reinforceTimer<=0){t.reinforceTimer=this.gameMode==='domination'?this.matchRules.reinforcementSeconds:this.matchRules.reinforcementSeconds+Math.random()*4;const cap=this.gameMode==='domination'?DOMINATION_RULES.squadSize:this.matchRules.squadSize+2;if(this.livingUnits(t.id).length<cap)this.addUnit(this.gameMode==='domination'?DOMINATION_RULES.classId:(Math.random()>.5?'scout':'gunner'),t.id,this.respawnPos(t.id,Math.floor(Math.random()*3)))}}
     }}
   // ── DANGER warning: sub-20% HP allies get a bouncing red arrow (15s cooldown)
+  updateUnitRenderLod(dt){
+    this._unitLodTimer=(this._unitLodTimer||0)-dt;const refresh=this._unitLodTimer<=0,quality=this.performanceGovernor?.quality??1;if(refresh)this._unitLodTimer=.12;
+    for(const unit of this.combatants){if(unit.type!=='unit'||!unit.renderDetails)continue;if(refresh){const focus=unit===this.player||unit===this.observerTarget,level=focus?0:unitRenderLod(this.camera.position.distanceToSquared(unit.group.position),quality);if(level!==unit.renderLod){unit.renderLod=level;for(const object of unit.renderDetails.aura)object.visible=level===0;for(const object of unit.renderDetails.face)object.visible=level===0;for(const object of unit.renderDetails.limbs)object.visible=level<2}}if(unit.renderLod===2)unit.weaponGroup.visible=false}
+  }
   updateDanger(dt){for(const e of this.combatants){if(e.type!=='unit')continue;e.dangerCooldown=Math.max(0,(e.dangerCooldown||0)-dt);
     if(!this.observerOnly&&!e.dead&&e.team===this.playerTeam&&e.hp<e.maxHp*.2&&e.dangerCooldown<=0){e.dangerCooldown=15;e.dangerTimer=4;this.audio.play('pickup',.5)}
     if(e.dangerTimer>0&&!e.dead){e.dangerTimer-=dt;if(!e.danger)e.danger=this.factory.createDangerIndicator();e.danger.visible=true;e.danger.position.copy(e.group.position);e.danger.position.y+=3.3+Math.abs(Math.sin(this.elapsed*7))*.5;e.danger.rotation.y=this.elapsed*2.5}
@@ -1388,6 +1422,7 @@ export class Game{
     else gsap.to(target.group.scale,{x:.05,y:.05,z:.05,duration:.45,ease:'back.in(2)',onComplete:()=>{target.group.visible=false}})}
   playCosmeticEffect(id,position,intensity=1){const item=COSMETICS.find(entry=>entry.id===id);if(!item||!position)return;const pos=position.clone().add(new THREE.Vector3(0,1,0)),primary=item.visual?.primary||0xffd23f,secondary=item.visual?.secondary||0xffffff,model=item.visual?.model;this.particles.burst(pos,primary,Math.round((model==='fireworks'||model==='jackpot'?70:38)*intensity),10*intensity);this.particles.burst(pos,secondary,Math.round(24*intensity),model==='lightning'?18:7*intensity)}
   handleDeath(target,source,details={}){
+    this._combatantIndexDirty=true;
     if (target.group && target.group.position) {
       const pos = target.group.position;
       if (target.type === 'unit') {
@@ -1872,7 +1907,7 @@ export class Game{
   endRuntime(){this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
   disposeScene(){if(!this.scene)return;this.scene.traverse(o=>{if(o.geometry)o.geometry.dispose?.();if(o.material&&!Array.isArray(o.material))o.material.dispose?.()});this.scene.clear();this.materials?.dispose?.();this.world?.dispose?.();this.materials=null;this.world=null}
   resize(){const w=innerWidth,h=innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h)}
-  loop(){if(this.running)return;this.running=true;const frame=()=>{requestAnimationFrame(frame);const time=performance.now()/1000,dt=time-this.lastFrame;this.lastFrame=time;this.update(dt,time);this.renderer.render(this.scene,this.camera);if(['mission','observer','victory_sequence'].includes(this.state))this.performanceGovernor?.update(dt,this.combat?.diagnostics?.())};frame()}
+  loop(){if(this.running)return;this.running=true;const frame=()=>{requestAnimationFrame(frame);const time=performance.now()/1000,dt=time-this.lastFrame;this.lastFrame=time;const updateStart=performance.now();this.update(dt,time);const renderStart=performance.now();this.renderer.render(this.scene,this.camera);const frameEnd=performance.now();if(['mission','observer','victory_sequence'].includes(this.state))this.performanceGovernor?.update(dt,{...this.combat?.diagnostics?.(),...this._perfBreakdown,updateMs:renderStart-updateStart,renderMs:frameEnd-renderStart})};frame()}
 
   setHandsAndCrateOpacity(unit, opacity) {
     const parts = [unit.leftHand, unit.rightHand];
