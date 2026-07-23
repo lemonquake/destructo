@@ -49,21 +49,96 @@ export function createMissileModel(scale = 1) {
   return root;
 }
 
+export function createTankShellBrownModel(scale = 1.3) {
+  const root = new THREE.Group();
+  const steel = material(0x5a626a, null, .8, .3);
+  const brass = material(0xc29b38, null, .9, .25);
+  const tip = material(0xff6b3d, null, .4, .4);
+  const body = part(new THREE.CylinderGeometry(.13, .13, .65, 10), steel, [0, 0, 0], [Math.PI / 2, 0, 0]); root.add(body);
+  const nose = part(new THREE.ConeGeometry(.13, .35, 10), tip, [0, 0, .5], [Math.PI / 2, 0, 0]); root.add(nose);
+  const ring = part(new THREE.CylinderGeometry(.135, .135, .08, 10), brass, [0, 0, -.18], [Math.PI / 2, 0, 0]); root.add(ring);
+  root.scale.setScalar(scale); root.userData.projectileKind = 'tank_shell_brown';
+  return root;
+}
+
+export function createTankShellYellowModel(scale = 1.4) {
+  const root = new THREE.Group();
+  const coreMat = new THREE.MeshStandardMaterial({ color: 0xffea55, emissive: 0xffb700, emissiveIntensity: 1.8, roughness: .2 });
+  const gold = material(0xd6a319, null, .88, .2);
+  const ringMat = new THREE.MeshStandardMaterial({ color: 0xfff080, emissive: 0xffd23f, emissiveIntensity: 1.2 });
+  const core = part(new THREE.SphereGeometry(.17, 10, 8), coreMat); root.add(core);
+  const ring1 = part(new THREE.TorusGeometry(.24, .025, 6, 12), ringMat, [0, 0, 0], [Math.PI / 2, 0, 0]); root.add(ring1);
+  const ring2 = part(new THREE.TorusGeometry(.24, .025, 6, 12), gold, [0, 0, 0], [0, Math.PI / 2, 0]); root.add(ring2);
+  const tipFront = part(new THREE.ConeGeometry(.12, .3, 8), gold, [0, 0, .28], [Math.PI / 2, 0, 0]); root.add(tipFront);
+  root.scale.setScalar(scale); root.userData.projectileKind = 'tank_shell_yellow';
+  return root;
+}
+
+export function createTankShellBlueModel(scale = 1.4) {
+  const root = new THREE.Group();
+  const crystalMat = new THREE.MeshStandardMaterial({ color: 0x6ee2ff, emissive: 0x1f94d2, emissiveIntensity: 1.6, roughness: .15, transparent: true, opacity: .9 });
+  const chrome = material(0xb0d5f0, null, .95, .15);
+  const orb = part(new THREE.OctahedronGeometry(.18, 2), crystalMat); root.add(orb);
+  const shell = part(new THREE.CylinderGeometry(.12, .15, .45, 8), chrome, [0, 0, 0], [Math.PI / 2, 0, 0]); root.add(shell);
+  for (let i = 0; i < 3; i++) {
+    const fin = part(new THREE.BoxGeometry(.035, .18, .15), chrome, [0, 0, -.2]);
+    const a = i * Math.PI * 2 / 3;
+    fin.rotation.z = a; fin.position.x = Math.cos(a) * .12; fin.position.y = Math.sin(a) * .12; root.add(fin);
+  }
+  root.scale.setScalar(scale); root.userData.projectileKind = 'tank_shell_blue';
+  return root;
+}
+
+export function createTankShellRedModel(scale = 1.5) {
+  const root = new THREE.Group();
+  const darkMetal = material(0x22181c, null, .85, .25);
+  const magmaCore = new THREE.MeshStandardMaterial({ color: 0xff2200, emissive: 0xff3300, emissiveIntensity: 2.2 });
+  const crimsonNose = material(0xff102c, null, .5, .3);
+  const body = part(new THREE.CylinderGeometry(.16, .16, .65, 10), darkMetal, [0, 0, 0], [Math.PI / 2, 0, 0]); root.add(body);
+  const nose = part(new THREE.ConeGeometry(.16, .38, 10), crimsonNose, [0, 0, .45], [Math.PI / 2, 0, 0]); root.add(nose);
+  const vent = part(new THREE.CylinderGeometry(.11, .14, .18, 10), magmaCore, [0, 0, -.36], [Math.PI / 2, 0, 0]); root.add(vent);
+  for (let i = 0; i < 4; i++) {
+    const fin = part(new THREE.BoxGeometry(.05, .24, .2), crimsonNose, [0, 0, -.28]);
+    fin.rotation.z = i * Math.PI / 2; fin.position.x = Math.cos(i * Math.PI / 2) * .14; fin.position.y = Math.sin(i * Math.PI / 2) * .14; root.add(fin);
+  }
+  root.scale.setScalar(scale); root.userData.projectileKind = 'tank_shell_red';
+  return root;
+}
+
 export function createProjectileRig() {
   const root = new THREE.Group();
   const basicMaterial = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0x222222, emissiveIntensity: .45, roughness: .32, transparent: true });
   const basic = part(new THREE.BoxGeometry(.055, .055, .28), basicMaterial); root.add(basic);
   const grenade = createGrenadeModel(); grenade.visible = false; root.add(grenade);
   const missile = createMissileModel(); missile.visible = false; root.add(missile);
-  root.userData.parts = { basic, grenade, missile };
+  const tankBrown = createTankShellBrownModel(); tankBrown.visible = false; root.add(tankBrown);
+  const tankYellow = createTankShellYellowModel(); tankYellow.visible = false; root.add(tankYellow);
+  const tankBlue = createTankShellBlueModel(); tankBlue.visible = false; root.add(tankBlue);
+  const tankRed = createTankShellRedModel(); tankRed.visible = false; root.add(tankRed);
+  root.userData.parts = { basic, grenade, missile, tankBrown, tankYellow, tankBlue, tankRed };
   root.userData.materials = [basicMaterial];
   return root;
 }
 
 export function configureProjectileRig(root, style, geometry, color) {
-  const { basic, grenade, missile } = root.userData.parts;
-  const kind = style === 'grenade' ? 'grenade' : style === 'rocket' || style === 'missile' ? 'missile' : 'basic';
-  basic.visible = kind === 'basic'; grenade.visible = kind === 'grenade'; missile.visible = kind === 'missile';
-  if (basic.visible) { basic.geometry = geometry; basic.material.color.setHex(color); basic.material.emissive.setHex(color); }
-  root.userData.activeModel = kind === 'grenade' ? grenade : kind === 'missile' ? missile : basic;
+  const { basic, grenade, missile, tankBrown, tankYellow, tankBlue, tankRed } = root.userData.parts;
+  basic.visible = false; grenade.visible = false; missile.visible = false;
+  if (tankBrown) tankBrown.visible = false; if (tankYellow) tankYellow.visible = false;
+  if (tankBlue) tankBlue.visible = false; if (tankRed) tankRed.visible = false;
+
+  let kind = 'basic';
+  if (style === 'grenade') kind = 'grenade';
+  else if (style === 'rocket' || style === 'missile') kind = 'missile';
+  else if (style === 'tank_shell_brown') kind = 'tankBrown';
+  else if (style === 'tank_shell_yellow') kind = 'tankYellow';
+  else if (style === 'tank_shell_blue') kind = 'tankBlue';
+  else if (style === 'tank_shell_red') kind = 'tankRed';
+
+  if (kind === 'basic') {
+    basic.visible = true; basic.geometry = geometry; basic.material.color.setHex(color); basic.material.emissive.setHex(color);
+  } else if (root.userData.parts[kind]) {
+    root.userData.parts[kind].visible = true;
+  }
+  root.userData.activeModel = root.userData.parts[kind] || basic;
 }
+

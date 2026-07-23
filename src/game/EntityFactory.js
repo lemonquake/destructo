@@ -243,18 +243,124 @@ export class EntityFactory {
     if (crate.box) crate.box.material = mat;
     for (const band of crate.bands || []) band.material = this.materials.color(type.band, type.tier >= 2 ? { emissive: type.color, emissiveIntensity: .35 } : {});
   }
-  createTank(team, position, kind = 'tank') {
-    const isAPC=kind==='apc',mega=kind===true||kind==='mega';
+  createTank(team, position, kind = 'tank', crateVariant = 'brown') {
+    const isAPC = kind === 'apc', mega = kind === true || kind === 'mega';
+    const variantId = typeof crateVariant === 'string' ? crateVariant : (crateVariant?.dominant || crateVariant?.id || 'brown');
     const group = new THREE.Group(); group.position.copy(position); const color = this.teamColor(team);
-    const hull = mesh(new THREE.BoxGeometry(3.1, 1.1, 4.1), this.materials.teamTextured('tech_roof', color)); hull.position.y = 1; group.add(hull);
-    for (const x of [-1.7, 1.7]) { const tread = mesh(new THREE.BoxGeometry(.55, .75, 4.4), this.materials.building('plating')); tread.position.set(x, .7, 0); group.add(tread); }
-    const turret = new THREE.Group(); const dome = mesh(isAPC?new THREE.BoxGeometry(1.9,.72,1.8):new THREE.CylinderGeometry(1.15, 1.4, .75, 8), this.materials.metal); dome.position.y = 1.75; turret.add(dome); const barrelLength=isAPC?2.2:3.8,barrel = mesh(new THREE.CylinderGeometry(isAPC ? .08 : .14,isAPC ? .1 : .18,barrelLength,8), this.materials.metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0,1.8,isAPC?1.35:1.9);const muzzle=new THREE.Object3D();muzzle.name='muzzle-anchor';muzzle.position.y=barrelLength/2;barrel.add(muzzle);turret.add(barrel); group.add(turret);
-    if (mega) { group.scale.setScalar(1.3); const fin = mesh(new THREE.BoxGeometry(.2, 1.1, 1.6), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .5 })); fin.position.set(0, 1.9, -1.6); group.add(fin); }
-    const hp = mega ? 900 : isAPC?560:720,passengers=[];
-    const cannon={...WEAPONS.rocket,name:isAPC?'APC Autocannon':'Tank Cannon',damage:isAPC?28:115,rate:isAPC ? .34 : 1.15,bulletSpeed:isAPC?76:38,shotPower:isAPC?58:68,effectiveRange:isAPC?48:62,spread:isAPC ? .014 : .0025,explosive:!isAPC,projectileStyle:isAPC?'tracer':'missile',recoil:isAPC?1.4:8};
-    const entity = { id: crypto.randomUUID(), type: 'vehicle', vehicleKind:isAPC?'apc':'tank', autonomous:false, team, name:isAPC?'Armored Carrier':'Battle Tank', group, turret, head:turret, barrels:[barrel], muzzleAnchors:[muzzle], hp, maxHp: hp, armor:isAPC ? .32 : .42,radius: mega ? 2.7 : 2.1, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1), speed:isAPC?6.2:mega?4.4:4.8,turnSpeed:isAPC?1.65:1.25,weaponId:'cannon',weapon:cannon,fireCooldown:0,driver:null,passengers,capacity:3,wheels:[],wheelSpin:0,interactive:true,dead:false };
-    Object.defineProperty(entity,'occupants',{get:()=>[entity.driver,...entity.passengers].filter(Boolean)});
-    group.traverse(o => { if (o.isMesh) o.userData.entity = entity; }); this.scene.add(group); return entity;
+
+    // Crate-variant color schemes & materials
+    const vMat = {
+      brown:  { hull: this.materials.teamTextured('tech_roof', color), trim: this.materials.building('plating'), glow: 0xff6b3d, name: 'Battle Tank' },
+      yellow: { hull: this.materials.color(0xc79415, { metalness: .85, roughness: .2 }), trim: this.materials.color(0xffd23f, { emissive: 0x996a00, emissiveIntensity: .4 }), glow: 0xffd23f, name: 'Solar Battle Tank' },
+      blue:   { hull: this.materials.color(0x1d4d73, { metalness: .75, roughness: .25 }), trim: this.materials.color(0x58c8ff, { emissive: 0x125a8a, emissiveIntensity: .6 }), glow: 0x58c8ff, name: 'Cryo-Pulse Tank' },
+      red:    { hull: this.materials.color(0x281216, { metalness: .8, roughness: .3 }), trim: this.materials.color(0xff102c, { emissive: 0x77000c, emissiveIntensity: .7 }), glow: 0xff102c, name: 'Crimson Annihilator Tank' },
+    }[variantId] || { hull: this.materials.teamTextured('tech_roof', color), trim: this.materials.building('plating'), glow: 0xff6b3d, name: 'Battle Tank' };
+
+    const glowMat = this.materials.color(vMat.glow, { emissive: vMat.glow, emissiveIntensity: 1.4 });
+    const metalMat = this.materials.metal;
+
+    // Chassis / Hull
+    const hull = mesh(new THREE.BoxGeometry(3.1, 1.1, 4.1), vMat.hull); hull.position.y = 1; group.add(hull);
+    for (const x of [-1.7, 1.7]) {
+      const tread = mesh(new THREE.BoxGeometry(.55, .75, 4.4), vMat.trim); tread.position.set(x, .7, 0); group.add(tread);
+      if (variantId === 'yellow' || variantId === 'red') {
+        const guard = mesh(new THREE.BoxGeometry(.12, .45, 4.5), glowMat, false); guard.position.set(x * 1.18, .85, 0); group.add(guard);
+      }
+    }
+
+    // Enhancement details by variant
+    if (variantId === 'yellow') {
+      // Solar capacitors on sides
+      for (const x of [-1.6, 1.6]) {
+        const cap = mesh(new THREE.CylinderGeometry(.25, .25, 2.2, 8), glowMat, false); cap.rotation.x = Math.PI / 2; cap.position.set(x, 1.4, 0); group.add(cap);
+      }
+    } else if (variantId === 'blue') {
+      // Cryo pulse coils and energy dome
+      for (const z of [-1.2, 1.2]) {
+        const coil = mesh(new THREE.TorusGeometry(.35, .08, 6, 12), glowMat, false); coil.rotation.y = Math.PI / 2; coil.position.set(0, 1.6, z); group.add(coil);
+      }
+    } else if (variantId === 'red') {
+      // Quad exhaust stacks with flaming tips & spiked front
+      for (const x of [-.9, -.3, .3, .9]) {
+        const pipe = mesh(new THREE.CylinderGeometry(.12, .14, 1.1, 8), metalMat); pipe.position.set(x, 1.75, -1.8); group.add(pipe);
+        const flame = mesh(new THREE.ConeGeometry(.1, .3, 6), glowMat, false); flame.position.set(x, 2.38, -1.8); group.add(flame);
+      }
+      for (const x of [-1.1, 0, 1.1]) {
+        const spike = mesh(new THREE.ConeGeometry(.18, .6, 6), vMat.trim); spike.rotation.x = Math.PI / 2; spike.position.set(x, 1.0, 2.3); group.add(spike);
+      }
+    }
+
+    // Turret & Barrels
+    const turret = new THREE.Group();
+    const domeGeo = isAPC ? new THREE.BoxGeometry(1.9, .72, 1.8) : new THREE.CylinderGeometry(1.15, 1.4, .75, 8);
+    const dome = mesh(domeGeo, metalMat); dome.position.y = 1.75; turret.add(dome);
+
+    const barrels = []; const muzzleAnchors = [];
+    const twinBarrels = (variantId === 'blue' || variantId === 'red') && !isAPC;
+    const barrelLength = isAPC ? 2.2 : twinBarrels ? 3.5 : 3.8;
+    const barrelOffsets = twinBarrels ? [-.38, .38] : [0];
+
+    for (const xOff of barrelOffsets) {
+      const barrel = mesh(new THREE.CylinderGeometry(isAPC ? .08 : .13, isAPC ? .1 : .17, barrelLength, 8), metalMat);
+      barrel.rotation.x = Math.PI / 2; barrel.position.set(xOff, 1.8, isAPC ? 1.35 : 1.9);
+      
+      // Barrel tip enhancements
+      if (variantId === 'yellow') {
+        const ring = mesh(new THREE.TorusGeometry(.22, .05, 6, 12), glowMat, false); ring.position.y = barrelLength / 2 - .1; barrel.add(ring);
+      } else if (variantId === 'red') {
+        const brake = mesh(new THREE.BoxGeometry(.32, .2, .32), glowMat, false); brake.position.y = barrelLength / 2 - .15; barrel.add(brake);
+      }
+
+      const muzzle = new THREE.Object3D(); muzzle.name = 'muzzle-anchor'; muzzle.position.y = barrelLength / 2;
+      barrel.add(muzzle); turret.add(barrel); barrels.push(barrel); muzzleAnchors.push(muzzle);
+    }
+    group.add(turret);
+
+    if (mega) {
+      group.scale.setScalar(1.3);
+      const fin = mesh(new THREE.BoxGeometry(.2, 1.1, 1.6), this.materials.color(0xffd23f, { emissive: 0xaa7700, emissiveIntensity: .5 }));
+      fin.position.set(0, 1.9, -1.6); group.add(fin);
+    }
+
+    const hp = mega ? 950 : isAPC ? 560 : variantId === 'red' ? 900 : variantId === 'blue' ? 820 : variantId === 'yellow' ? 760 : 720;
+    const passengers = [];
+
+    // Crate-specific weapons and projectiles
+    const projStyle = isAPC ? 'tracer' : `tank_shell_${variantId}`;
+    const baseDamage = isAPC ? 28 : { brown: 120, yellow: 155, blue: 190, red: 260 }[variantId] || 120;
+    const baseRate = isAPC ? .34 : { brown: 1.1, yellow: 0.9, blue: 0.8, red: 0.7 }[variantId] || 1.1;
+    const baseSpeed = isAPC ? 76 : { brown: 42, yellow: 54, blue: 62, red: 70 }[variantId] || 42;
+    const weaponColor = isAPC ? 0xffdc62 : vMat.glow;
+
+    const cannon = {
+      ...WEAPONS.rocket,
+      name: isAPC ? 'APC Autocannon' : vMat.name + ' Cannon',
+      damage: baseDamage,
+      rate: baseRate,
+      bulletSpeed: baseSpeed,
+      shotPower: isAPC ? 58 : 75,
+      effectiveRange: isAPC ? 48 : 65,
+      spread: isAPC ? .014 : .002,
+      explosive: !isAPC,
+      projectileStyle: projStyle,
+      color: weaponColor,
+      recoil: isAPC ? 1.4 : 8,
+      variantId
+    };
+
+    const fullName = isAPC ? 'Armored Carrier' : vMat.name;
+    const entity = {
+      id: crypto.randomUUID(), type: 'vehicle', vehicleKind: isAPC ? 'apc' : 'tank', autonomous: false,
+      team, name: fullName, group, turret, head: turret, barrels, muzzleAnchors,
+      hp, maxHp: hp, armor: isAPC ? .32 : variantId === 'red' ? .52 : .42,
+      radius: mega ? 2.7 : 2.1, velocity: new THREE.Vector3(), aim: new THREE.Vector3(0, 0, 1),
+      speed: isAPC ? 6.2 : mega ? 4.4 : 4.8, turnSpeed: isAPC ? 1.65 : 1.25,
+      weaponId: 'cannon', weapon: cannon, fireCooldown: 0, driver: null, passengers, capacity: 3,
+      wheels: [], wheelSpin: 0, interactive: true, dead: false, crateVariant: variantId
+    };
+    Object.defineProperty(entity, 'occupants', { get: () => [entity.driver, ...entity.passengers].filter(Boolean) });
+    group.traverse(o => { if (o.isMesh) o.userData.entity = entity; });
+    this.scene.add(group); return entity;
   }
   createTurret(team, position) {
     const group = new THREE.Group(); group.position.copy(position); const color = this.teamColor(team);

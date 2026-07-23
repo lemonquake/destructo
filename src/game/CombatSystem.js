@@ -7,11 +7,12 @@ const PROJECTILE_GEOS = Object.freeze({
   slug: new THREE.SphereGeometry(.09, 6, 4), dart: new THREE.ConeGeometry(.055, .4, 6).rotateX(Math.PI / 2), lance: new THREE.BoxGeometry(.055, .055, .55),
   tracer: new THREE.BoxGeometry(.055, .055, .28), grenade: new THREE.DodecahedronGeometry(.17, 0), pellet: new THREE.SphereGeometry(.055, 5, 3),
   bolt: new THREE.OctahedronGeometry(.1, 0), mine: tube(.24, .1, 10), rocket: tube(.1, .52, 8), missile: tube(.1, .52, 8), arc: new THREE.TorusGeometry(.13, .035, 5, 10), plasma: new THREE.IcosahedronGeometry(.17, 1),
+  tank_shell_brown: tube(.13, .65, 8), tank_shell_yellow: new THREE.SphereGeometry(.17, 8, 6), tank_shell_blue: new THREE.OctahedronGeometry(.18, 1), tank_shell_red: tube(.16, .65, 8),
 });
-const STYLE_NAMES=Object.keys(PROJECTILE_GEOS),DETAIL_STYLES=new Set(['grenade','rocket','missile']);
+const STYLE_NAMES=Object.keys(PROJECTILE_GEOS),DETAIL_STYLES=new Set(['grenade','rocket','missile','tank_shell_brown','tank_shell_yellow','tank_shell_blue','tank_shell_red']);
 // approximate z-length of each projectile geometry — used to stretch instances along
 // last frame's travel so fast bullets render as continuous tracers instead of dots
-const STYLE_LENGTHS={slug:.18,dart:.4,lance:.55,tracer:.28,grenade:.34,pellet:.11,bolt:.2,mine:.1,rocket:.52,missile:.52,arc:.33,plasma:.34};
+const STYLE_LENGTHS={slug:.18,dart:.4,lance:.55,tracer:.28,grenade:.34,pellet:.11,bolt:.2,mine:.1,rocket:.52,missile:.52,arc:.33,plasma:.34,tank_shell_brown:.65,tank_shell_yellow:.45,tank_shell_blue:.45,tank_shell_red:.65};
 const WORLD_GRAVITY=18,POWER_REFERENCE=50,POOL_SIZE=2048,MINE_POOL_SIZE=256,DETAIL_POOL_SIZE=128,SPATIAL_CELL=8;
 export const PROJECTILE_SPREAD_SCALE=.7;
 export const ballisticGravity=weapon=>weapon?.ballistic===false||weapon?.mine?0:WORLD_GRAVITY*(POWER_REFERENCE/Math.max(1,weapon?.shotPower||POWER_REFERENCE));
@@ -48,7 +49,14 @@ export class CombatSystem {
   canHit(shooter,target){return target.type==='prop'||target.team==='neutral'||shooter.team==='neutral'||this.isHostile(shooter.team,target.team)}
   muzzleAnchors(shooter){return (shooter?.muzzleAnchors||[]).filter(anchor=>anchor?.getWorldPosition)}
   muzzlePosition(shooter,index=0,out=new THREE.Vector3()){
-    const anchors=this.muzzleAnchors(shooter);if(anchors.length)return anchors[index%anchors.length].getWorldPosition(out);
+    const anchors=this.muzzleAnchors(shooter);
+    if(anchors.length){
+      const anchor=anchors[index%anchors.length];
+      if(anchor?.updateWorldMatrix)anchor.updateWorldMatrix(true,false);
+      else if(shooter.group?.updateMatrixWorld)shooter.group.updateMatrixWorld(true);
+      return anchor.getWorldPosition(out);
+    }
+    if(shooter.group?.updateMatrixWorld)shooter.group.updateMatrixWorld(true);
     const start=shooter.group.position,muzzleHeight=shooter.type==='turret'?2.55:shooter.type==='vehicle'?2.35:1.35;return out.set(start.x,start.y+muzzleHeight,start.z).addScaledVector(shooter.aim||new THREE.Vector3(0,0,1),1.05)
   }
   ballisticDirectionFor(shooter,target){if(!shooter?.weapon||!target?.group)return null;const origin=this.muzzlePosition(shooter,0,new THREE.Vector3()),point=target.group.position.clone().add(new THREE.Vector3(0,targetHeight(target),0));return solveBallisticDirection(origin,point,shooter.weapon,target.velocity)}
@@ -61,7 +69,7 @@ export class CombatSystem {
     for(let i=0;i<pellets;i++)this.spawn(shooter,direction,w,i);
     shooter.nextShotMultiplier=1;shooter.cloakTimer=0;shooter.recoil=Math.min(1,.35+(w.recoil||0)*.09);if(shooter.velocity&&w.recoil)shooter.velocity.addScaledVector(direction,-(w.recoil||0));this.playShotAudio(shooter);return true
   }
-  playShotAudio(shooter){if(!this.audio||!shooter.group?.position)return;let soundName='pistol',rate=.85+Math.random()*.3;if(shooter.type==='turret'){soundName='turret';rate=.7+Math.random()*.15}else if(shooter.weaponId){if(shooter.weaponId==='uzi')soundName='uzi';else if(shooter.weaponId==='flamethrower'){soundName='turret';rate=1.6+Math.random()*.2}else if(shooter.weaponId==='railgun'){soundName='sniper';rate=.55}else if(shooter.weaponId==='freezeray'){soundName='sniper';rate=1.75}else if(shooter.weaponId==='cannon'){soundName='shotgun';rate=.45}else if(['machinegun','smg','rifle'].includes(shooter.weaponId))soundName='machinegun';else if(['shotgun','rocket','grenade'].includes(shooter.weaponId))soundName='shotgun';else if(shooter.weaponId==='grenadelauncher')soundName='grenade_launcher';else if(shooter.weaponId==='sniper')soundName='sniper';else if(['tesla','plasma'].includes(shooter.weaponId)){soundName='sniper';rate=1.35}}this.audio.play(soundName,shooter.group.position,rate)}
+  playShotAudio(shooter){if(!this.audio||!shooter.group?.position)return;let soundName='pistol',rate=.85+Math.random()*.3;if(shooter.type==='turret'){soundName='turret';rate=.7+Math.random()*.15}else if(shooter.weaponId){if(shooter.weaponId==='uzi')soundName='uzi';else if(shooter.weaponId==='flamethrower'){soundName='turret';rate=1.6+Math.random()*.2}else if(shooter.weaponId==='railgun'){soundName='sniper';rate=.55}else if(shooter.weaponId==='freezeray'){soundName='sniper';rate=1.75}else if(shooter.weaponId==='cannon'){soundName='shotgun';rate=.35}else if(['machinegun','smg','rifle'].includes(shooter.weaponId))soundName='machinegun';else if(['shotgun','rocket','grenade'].includes(shooter.weaponId))soundName='shotgun';else if(shooter.weaponId==='grenadelauncher')soundName='grenade_launcher';else if(shooter.weaponId==='sniper')soundName='sniper';else if(['tesla','plasma'].includes(shooter.weaponId)){soundName='sniper';rate=1.35}}this.audio.play(soundName,shooter.group.position,rate)}
   spawn(shooter,direction,w,muzzleIndex=0){
     const equippedProj=shooter.projectileStyle;if(equippedProj){const cosmetic=MARKETPLACE_COSMETICS.find(item=>item.id===equippedProj&&item.kind==='projectile'),model=cosmetic?.visual?.model,style={laser:'lance',plasma:'plasma',pellet:'pellet',bolt:'bolt',comet:'plasma',heart:'bolt'}[model]||'tracer';w={...w,projectileStyle:style,color:cosmetic?.visual?.primary||w.color}}
     const slot=(w.mine?this.freeMineSlots:this.freeSlots).pop();if(slot===undefined){this.projectileSpawnDenied++;return null}const p=this.pool[slot];p.active=true;this.activeSlots.add(slot);p.shooter=shooter;p.weapon=w;p.age=0;p.trailTimer=0;p.mine=Boolean(w.mine);p.maxAge=p.mine?12:Infinity;p.style=w.projectileStyle||'slug';p.scale=w.projectileScale||1;p.detail=null;if(p.mine)this.activeMines++;else this.activeCount++;
@@ -81,8 +89,29 @@ export class CombatSystem {
   }
   terrainHit(start,end){const distance=start.distanceTo(end),steps=Math.max(1,Math.min(10,Math.ceil(distance))),delta=end.clone().sub(start),point=new THREE.Vector3(),previous=start.clone(),surfaceY=this.projectileFloor(previous),previousGap=previous.y-surfaceY;if(previousGap<=0)return{t:0,surface:this.surfaceAt(previous)};for(let i=1;i<=steps;i++){const t=i/steps;point.copy(start).addScaledVector(delta,t);const ground=this.projectileFloor(point),gap=point.y-ground;if(gap<=0){let lo=(i-1)/steps,hi=t;for(let n=0;n<6;n++){const mid=(lo+hi)/2;point.copy(start).addScaledVector(delta,mid);const h=this.projectileFloor(point);if(point.y-h>0)lo=mid;else hi=mid}point.copy(start).addScaledVector(delta,hi);return{t:hi,surface:this.surfaceAt(point)}}previous.copy(point)}return null}
   boundsHit(start,end){const b=this.world?.bounds;if(!b)return null;if(Math.abs(end.x)<=b&&Math.abs(end.z)<=b)return null;const d=end.clone().sub(start),times=[];if(d.x>0)times.push((b-start.x)/d.x);else if(d.x<0)times.push((-b-start.x)/d.x);if(d.z>0)times.push((b-start.z)/d.z);else if(d.z<0)times.push((-b-start.z)/d.z);const valid=times.filter(t=>t>=0&&t<=1).sort((a,b)=>a-b);return valid.length?valid[0]:1}
-  findImpact(p,start,end){let best=null,bestT=Infinity;const pointAt=t=>start.clone().lerp(end,t);for(const target of this.candidatesFor(start,end,p.mine?3:2)){if(!target||target.dead||target===p.shooter||target.mountedTurret||target.mountedBunker||!this.canHit(p.shooter,target))continue;const center=target.group.position.clone().add(new THREE.Vector3(0,targetHeight(target),0)),radius=(target.radius||1)+(p.mine?2:.2),t=this.segmentSphere(start,end,center,radius);if(t!==null&&t<bestT){bestT=t;const point=pointAt(t);best={t,point,normal:point.clone().sub(center).normalize(),surface:target.type,target,reason:'target'}}}
-    const colliders=this.world?.collidersForSegment?.(start,end,p.mine?3:2)||this.world?.colliders||[];for(const collider of colliders){if(collider.entity===p.shooter||collider.entity?.mountedTurret||collider.entity?.mountedBunker)continue;const target=collider.entity;if(target&&!this.canHit(p.shooter,target))continue;const t=this.colliderHit(start,end,collider);if(t!==null&&t<bestT){bestT=t;const point=pointAt(t);best={t,point,normal:p.velocity.clone().normalize().negate(),surface:target?.subtype||'structure',target,reason:'collider'}}}
+  findImpact(p,start,end){
+    let best=null,bestT=Infinity;const pointAt=t=>start.clone().lerp(end,t);
+    const isSelfOrRider=target=>{
+      if(!target||!p.shooter)return false;
+      if(target===p.shooter)return true;
+      if(p.shooter.driver===target)return true;
+      if(Array.isArray(p.shooter.passengers)&&p.shooter.passengers.includes(target))return true;
+      if(p.shooter.passenger===target)return true;
+      return false;
+    };
+    for(const target of this.candidatesFor(start,end,p.mine?3:2)){
+      if(!target||target.dead||isSelfOrRider(target)||target.mountedTurret||target.mountedBunker||!this.canHit(p.shooter,target))continue;
+      const center=target.group.position.clone().add(new THREE.Vector3(0,targetHeight(target),0)),radius=(target.radius||1)+(p.mine?2:.2),t=this.segmentSphere(start,end,center,radius);
+      if(t!==null&&t<bestT){bestT=t;const point=pointAt(t);best={t,point,normal:point.clone().sub(center).normalize(),surface:target.type,target,reason:'target'}}
+    }
+    const colliders=this.world?.collidersForSegment?.(start,end,p.mine?3:2)||this.world?.colliders||[];
+    for(const collider of colliders){
+      if(isSelfOrRider(collider.entity)||collider.entity?.mountedTurret||collider.entity?.mountedBunker)continue;
+      const target=collider.entity;
+      if(target&&!this.canHit(p.shooter,target))continue;
+      const t=this.colliderHit(start,end,collider);
+      if(t!==null&&t<bestT){bestT=t;const point=pointAt(t);best={t,point,normal:p.velocity.clone().normalize().negate(),surface:target?.subtype||'structure',target,reason:'collider'}}
+    }
     const terrain=this.terrainHit(start,end);if(terrain&&terrain.t<bestT){bestT=terrain.t;best={t:terrain.t,point:pointAt(terrain.t),normal:new THREE.Vector3(0,1,0),surface:terrain.surface,target:null,reason:'terrain'}}const boundary=this.boundsHit(start,end);if(boundary!==null&&boundary<bestT)best={t:boundary,point:pointAt(boundary),normal:p.velocity.clone().setY(0).normalize().negate(),surface:'boundary',target:null,reason:'bounds'};return best
   }
   update(dt){this.rebuildSpatialHash();for(const slot of this.activeSlots){const p=this.pool[slot];if(!p.active)continue;p.age+=dt;if(p.weapon.crimson){p.trailTimer-=dt;if(p.trailTimer<=0){p.trailTimer=.055;this.particles?.impact?.(p.position,0xff102c,{kind:'energy'})}}
@@ -98,7 +127,32 @@ export class CombatSystem {
       if(len>baseLen*p.scale){const stretch=Math.min(9,len/(baseLen*p.scale));this._dummy.scale.z=p.scale*stretch;this._dummy.position.addScaledVector(seg.multiplyScalar(1/len),-Math.min(len,baseLen*p.scale*stretch)*.5)}
       this._dummy.lookAt(p.position.clone().add(p.velocity))}this._dummy.updateMatrix();mesh.setMatrixAt(index,this._dummy.matrix);mesh.setColorAt(index,this._color.setHex(p.weapon.color));counts[p.style]=index+1}for(const style of STYLE_NAMES){const mesh=this.instanceMeshes[style];mesh.count=counts[style];mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true}}
   hit(p,impact){if(!impact?.point){const target=impact,point=target?.group?.position?.clone?.()||p.position?.clone?.()||p.mesh?.position?.clone?.()||new THREE.Vector3();impact={target,point,normal:p.velocity?.clone?.().normalize().negate()||new THREE.Vector3(0,1,0),surface:target?.subtype||target?.type||'dirt',reason:'target'}}if(this.onStat&&p.shooter?.team)this.onStat(p.shooter.team,'bulletsHit');const target=impact.target;if(target){if(target.type==='crate')this.applyPhysicsImpulse(target,p.velocity,p.weapon.knockback||Math.min(8,p.weapon.damage*.12));else this.applyDamage(target,p.weapon.damage,p.shooter,p.velocity,p.weapon.knockback)}this.particles?.impact?.(impact.point,p.weapon.color,{normal:impact.normal,surface:impact.surface,kind:'projectile'});const subtype=(target?.subtype||'').toLowerCase(),softTarget=target?.type==='unit'||target?.type==='wildlife'||(target?.type==='prop'&&(subtype.includes('tree')||subtype.includes('wood')));if(!softTarget)this.audio?.play('ricochet',impact.point,.9+Math.random()*.25);if(p.weapon.crimson){this.particles?.burst?.(impact.point,0xff001f,46,15);this.particles?.burst?.(impact.point,0xff5268,24,20)}this.release(p)}
-  explode(p,impact){if(this.onStat&&p.shooter?.team)this.onStat(p.shooter.team,'bulletsHit');const pos=(impact?.point||p.position).clone();this.particles?.impact?.(pos,p.weapon.color,{normal:impact?.normal,surface:impact?.surface,kind:'explosive'});this.particles?.burst?.(pos,p.weapon.color,p.weapon.crimson?72:32,p.weapon.crimson?18:11);if(p.weapon.crimson)this.particles?.burst?.(pos,0xff001f,48,24);this.audio?.play('explosion',pos,.95+Math.random()*.15);for(const target of this.getTargets()){if(!target||target.dead||target===p.shooter||target.mountedTurret||target.mountedBunker||!this.canHit(p.shooter,target))continue;const dist=target.group.position.distanceTo(pos),radius=5.2*(p.weapon.projectileScale||1);if(dist>radius)continue;const falloff=1-dist/radius,dir=target.group.position.clone().sub(pos).setY(.4).normalize();this.applyDamage(target,p.weapon.damage*falloff,p.shooter,dir,p.weapon.knockback*falloff,true)}this.applyRadialPhysics(pos,5.2*(p.weapon.projectileScale||1),p.weapon.knockback||12);this.release(p)}
+  explode(p,impact){
+    if(this.onStat&&p.shooter?.team)this.onStat(p.shooter.team,'bulletsHit');
+    const pos=(impact?.point||p.position).clone();
+    const style = p.style || '';
+    const isBlue = style === 'tank_shell_blue';
+    const isYellow = style === 'tank_shell_yellow';
+    const isRed = style === 'tank_shell_red';
+
+    this.particles?.impact?.(pos,p.weapon.color,{normal:impact?.normal,surface:impact?.surface,kind:'explosive'});
+    this.particles?.burst?.(pos,p.weapon.color,isRed ? 90 : isBlue ? 54 : isYellow ? 64 : p.weapon.crimson ? 72 : 36, isRed ? 22 : isBlue ? 14 : 12);
+    if(isRed) { this.particles?.burst?.(pos, 0xff5200, 50, 18); this.particles?.burst?.(pos, 0x220508, 40, 10); }
+    else if(isBlue) { this.particles?.burst?.(pos, 0xffffff, 30, 8); }
+    else if(isYellow) { this.particles?.burst?.(pos, 0xfffaab, 36, 15); }
+    this.audio?.play('explosion',pos,.95+Math.random()*.15);
+
+    for(const target of this.getTargets()){
+      if(!target||target.dead||target===p.shooter||target.mountedTurret||target.mountedBunker||!this.canHit(p.shooter,target))continue;
+      const dist=target.group.position.distanceTo(pos),radius=(isRed ? 8.5 : isBlue ? 6.5 : isYellow ? 6.0 : 5.2)*(p.weapon.projectileScale||1);
+      if(dist>radius)continue;
+      const falloff=1-dist/radius,dir=target.group.position.clone().sub(pos).setY(.4).normalize();
+      this.applyDamage(target,p.weapon.damage*falloff,p.shooter,dir,p.weapon.knockback*falloff,true);
+      if (isBlue && target.freeze !== undefined) { target.freeze = Math.max(target.freeze || 0, 1.8 * falloff); }
+    }
+    this.applyRadialPhysics(pos,(isRed ? 8.5 : isBlue ? 6.5 : 5.2)*(p.weapon.projectileScale||1),p.weapon.knockback||12);
+    this.release(p);
+  }
   applyPhysicsImpulse(target,direction,strength){if(!target?.velocity||!direction||!strength||target.carried||target.placed)return;const mass=Math.max(.75,target.mass||1),dir=direction.clone().normalize(),scale=strength/Math.pow(mass,.82);target.velocity.addScaledVector(dir,scale);target.velocity.y=Math.min(target.velocity.y,Math.max(1.4,scale*.32));target.physicsActive=true;target.falling=true;target.grounded=false;if(target.angularVelocity){target.angularVelocity.x+=(dir.z+(Math.random()-.5)*.45)*scale*.32;target.angularVelocity.y+=(Math.random()-.5)*scale*.18;target.angularVelocity.z+=(-dir.x+(Math.random()-.5)*.45)*scale*.32}}
   applyRadialPhysics(position,radius,knockback){for(const target of this.getImpulseTargets()){if(!target||target.carried||target.placed)continue;const dist=target.group.position.distanceTo(position);if(dist>radius)continue;const falloff=Math.max(.12,1-dist/radius),dir=target.group.position.clone().sub(position).setY(Math.max(.16,.45-dist/radius*.2)).normalize();this.applyPhysicsImpulse(target,dir,knockback*falloff)}}
   applyDamage(target,damage,source,direction,knockback=0,explosive=false,reflected=false){if(target?.invulnerable||target.dead||target.critical)return;const cover=target.mountedTurret||target.mountedBunker||target.mountedMotorcycle;if(cover&&!cover.dead)return this.applyDamage(cover,damage,source,direction,knockback,explosive,reflected);if(Number.isFinite(target.armor))damage*=Math.max(.15,1-target.armor);if(target.barrierTimer>0)damage*=.35;if(target.passive?.id==='thickskin')damage*=.88;else if(target.team&&target.team!=='neutral'){for(const ally of this.getTargets()){if(!ally||ally.dead||ally===target||ally.passive?.id!=='thickskin'||this.isHostile(ally.team,target.team))continue;if(ally.group.position.distanceToSquared(target.group.position)<25){damage*=.92;break}}}if(explosive&&target.passive?.id==='blastproof')damage*=.6;if(target.passive?.id==='lucky'&&Math.random()<.12)damage=0;if(target.rearPlate&&direction&&target.aim&&direction.dot(target.aim)>.35)damage*=.6;if(target.shield>0&&damage>0){const soaked=Math.min(target.shield,damage);target.shield-=soaked;damage-=soaked}target.hp-=damage;if(damage>0&&target.passive?.id==='adrenaline')target.statusTimer=Math.max(target.statusTimer||0,3);if(damage>0&&source?.passive?.id==='vampiric'&&Number.isFinite(source.maxHp))source.hp=Math.min(source.maxHp,source.hp+damage*.12);if(!reflected&&damage>0&&target.passive?.id==='thorns'&&source&&!source.dead&&Number.isFinite(source.hp))this.applyDamage(source,damage*.1,target,null,0,false,true);if(target.hp<=0&&target.passive?.id==='laststand'&&!target.lastStandUsed){target.lastStandUsed=true;target.hp=1}this.onDamage?.(target,damage,source,direction,explosive);if(target.velocity&&direction&&knockback&&target.passive?.id!=='stonefeet'){const dir=direction.clone().normalize();target.velocity.addScaledVector(dir,knockback);if(knockback>6){target.state='tumble';target.stun=Math.min(1.5,.25+knockback*.07)}}if(target.hp<=0){target.hp=0;if(target.delayedExplosion){target.critical=true;target.explosionTimer=3;target.lastDamageSource=source;target.lastDamageExplosive=explosive;return}target.dead=true;this.onDeath(target,source,{explosive})}}

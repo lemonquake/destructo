@@ -73,4 +73,34 @@ describe('D-Builder crate designs', () => {
     expect(crate.box.material.color.getHex()).toBe(0xffffff);
     expect(crate.box.geometry.type).toBe('BoxGeometry');
   });
+
+  it('creates 4 distinct Tank models and weapon variants based on crate rarity (brown, yellow, blue, red)', () => {
+    const materials = {
+      teamTextured: vi.fn(() => new THREE.MeshStandardMaterial({ color: 0x555555 })),
+      building: vi.fn(() => new THREE.MeshStandardMaterial({ color: 0x333333 })),
+      metal: new THREE.MeshStandardMaterial({ color: 0x888888 }),
+      color: vi.fn((col, opts = {}) => new THREE.MeshStandardMaterial({ color: col, ...opts })),
+    };
+    const factory = new EntityFactory(new THREE.Scene(), materials);
+
+    const brownTank = factory.createTank('blue', new THREE.Vector3(), 'tank', 'brown');
+    const yellowTank = factory.createTank('blue', new THREE.Vector3(), 'tank', 'yellow');
+    const blueTank = factory.createTank('blue', new THREE.Vector3(), 'tank', 'blue');
+    const redTank = factory.createTank('blue', new THREE.Vector3(), 'tank', 'red');
+
+    expect(brownTank.weapon.projectileStyle).toBe('tank_shell_brown');
+    expect(yellowTank.weapon.projectileStyle).toBe('tank_shell_yellow');
+    expect(blueTank.weapon.projectileStyle).toBe('tank_shell_blue');
+    expect(redTank.weapon.projectileStyle).toBe('tank_shell_red');
+
+    expect(redTank.weapon.damage).toBeGreaterThan(blueTank.weapon.damage);
+    expect(blueTank.weapon.damage).toBeGreaterThan(yellowTank.weapon.damage);
+    expect(yellowTank.weapon.damage).toBeGreaterThan(brownTank.weapon.damage);
+
+    expect(redTank.barrels.length).toBe(2);
+    expect(blueTank.barrels.length).toBe(2);
+    expect(brownTank.barrels.length).toBe(1);
+    expect(yellowTank.barrels.length).toBe(1);
+  });
 });
+
