@@ -51,6 +51,7 @@ export class ArenaHUD {
         <strong data-respawn-count>3</strong>
         <small data-respawn-note>ROLLING OUT A FRESH CHASSIS…</small>
       </div>
+      <div class="arena-damage-numbers" data-damage-numbers aria-hidden="true"></div>
       <div class="arena-banner hidden" data-banner><strong></strong><small></small></div>
       <section class="arena-scoreboard hidden" data-scoreboard>
         <header><strong>DRIVER STANDINGS</strong><small data-scoreboard-rule></small></header>
@@ -62,7 +63,7 @@ export class ArenaHUD {
     for (const key of ['name-a', 'score-a', 'name-b', 'score-b', 'rule', 'timer', 'arena-name', 'standings', 'killfeed',
       'crosshair', 'vehicle-icon', 'vehicle-name', 'hp-fill', 'hp-label', 'ultimate', 'ult-name', 'ult-fill',
       'ult-label', 'speed', 'boost', 'respawn', 'respawn-count', 'respawn-note', 'banner', 'controls',
-      'scoreboard', 'scoreboard-rule', 'scoreboard-body']) {
+      'scoreboard', 'scoreboard-rule', 'scoreboard-body', 'damage-numbers']) {
       this.el[key] = this.root.querySelector(`[data-${key}]`);
     }
     this.feed = [];
@@ -141,6 +142,21 @@ export class ArenaHUD {
         <td>${row.kills}</td>
         <td>${row.deaths}</td>
       </tr>`).join('');
+  }
+  // Floating combat numbers, spawned at a projected screen position — the same
+  // idea as the infantry HUD, but on this mode's own layer so the two never
+  // fight over one container.
+  damageNumber(x, y, text, kind = 'hurt') {
+    const container = this.el['damage-numbers'];
+    if (!container) return;
+    if (container.children.length > 40) container.firstChild.remove();
+    const span = document.createElement('span');
+    span.className = `dmg ${kind}`;
+    span.textContent = text;
+    span.style.left = `${x + (Math.random() - 0.5) * 26}px`;
+    span.style.top = `${y}px`;
+    container.appendChild(span);
+    setTimeout(() => span.remove(), 850);
   }
   kill(killerName, victimName, weapon, killerColor = '#fff', victimColor = '#fff') {
     const row = document.createElement('div');

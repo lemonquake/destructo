@@ -177,8 +177,8 @@ describe('primary and pistol weapon slots',()=>{
 describe('setup and destructible polish',()=>{
   it('keeps nested setup scroll, focus, and input selection across a render',()=>{
     const oldMenu={scrollTop:420},oldList={scrollTop:135},active={dataset:{teamName:'2'},selectionStart:3,selectionEnd:7},newMenu={scrollTop:0},newList={scrollTop:0},replacement={focus:vi.fn(),setSelectionRange:vi.fn()};
-    const screen={scrollTop:55,contains:()=>true,querySelector:vi.fn(selector=>selector==='.setup-menu'?oldMenu:selector==='.setup-list'?oldList:null)};vi.stubGlobal('document',{activeElement:active});const game={state:'setup',screen};
-    const view=Game.prototype.captureSetupView.call(game);screen.querySelector=vi.fn(selector=>selector==='.setup-menu'?newMenu:selector==='.setup-list'?newList:selector==='[data-team-name="2"]'?replacement:null);screen.scrollTop=0;Game.prototype.restoreSetupView.call(game,view);
+    const screen={scrollTop:55,contains:()=>true,querySelector:vi.fn(selector=>selector==='.setup-main'?oldMenu:selector==='.setup-list'?oldList:null)};vi.stubGlobal('document',{activeElement:active});const game={state:'setup',screen};
+    const view=Game.prototype.captureSetupView.call(game);screen.querySelector=vi.fn(selector=>selector==='.setup-main'?newMenu:selector==='.setup-list'?newList:selector==='[data-team-name="2"]'?replacement:null);screen.scrollTop=0;Game.prototype.restoreSetupView.call(game,view);
     expect([screen.scrollTop,newMenu.scrollTop,newList.scrollTop]).toEqual([55,420,135]);expect(replacement.focus).toHaveBeenCalledWith({preventScroll:true});expect(replacement.setSelectionRange).toHaveBeenCalledWith(3,7);
   });
 

@@ -25,19 +25,21 @@ import { stepJumpState } from './JumpSystem.js';
 import { Marketplace } from './Marketplace.js';
 import { Casino } from './Casino.js';
 import { openPayPalCheckout } from './PayPalCheckout.js';
-import { ArenaSelect, DEFAULT_ARENA_CONFIG } from './arena/ArenaSelect.js';
+import { DEFAULT_ARENA_CONFIG } from './arena/ArenaSelect.js';
 import { ArenaMode } from './arena/ArenaMode.js';
-import { BlitzSelect, DEFAULT_BLITZ_CONFIG } from './blitz/BlitzSelect.js';
+import { DEFAULT_BLITZ_CONFIG } from './blitz/BlitzSelect.js';
 import { BlitzMode } from './blitz/BlitzMode.js';
+import { GameSetup } from './setup/GameSetup.js';
+import { DOMINATION_RULES, SQUAD_TEMPLATES } from './setup/SquadSetupPanel.js';
+import { setupModeById } from '../data/setupModes.js';
 
 const pick = list => list[Math.floor(Math.random() * list.length)];
 const hex = c => `#${c.toString(16).padStart(6, '0')}`;
 const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const SETUP_DEFAULTS = Object.freeze({ squadSize: 3, startingClasses: Object.freeze(['scout', 'scout', 'medic', 'gunner', 'commando']), startingAmmo: 90, aiDifficulty: 'regular', matchMinutes: 5, maxScore: 100, reinforcements: true, reinforcementSeconds: 15, dominationRespawnSeconds: 3 });
 // Screens that play over the live 3D menu diorama instead of a battle scene.
-const MENU_BACKDROP_STATES = new Set(['menu', 'setup', 'missions', 'leaderboard', 'results', 'arena-select', 'arena-results', 'blitz-select', 'blitz-results']);
+const MENU_BACKDROP_STATES = new Set(['menu', 'setup', 'missions', 'leaderboard', 'results', 'arena-results', 'blitz-results']);
 const freshMatchSetup = overrides => ({ ...SETUP_DEFAULTS, startingClasses: [...SETUP_DEFAULTS.startingClasses], ...overrides });
-const DOMINATION_RULES = Object.freeze({ squadSize: 4, reinforcementSeconds: 3, classId: 'commando', weaponId: 'rifle' });
 // heal tether: max wire length before the green wires snap, heal + drain rates
 const HEAL_RANGE = 11, HEAL_RATE = 14, HEAL_MP_DRAIN = 6, HEAL_WIRE_POINTS = 22;
 const GRAPPLE_RANGE = 54, GRAPPLE_LAUNCH_TIME = .36, GRAPPLE_PULL_TIME = 11 / 6;
@@ -63,7 +65,7 @@ export function rollDestructibleSupply(random=Math.random){const roll=random();r
 export function unitRenderLod(distanceSquared,quality=1){const near=quality<.45?24:quality<.75?34:48,far=quality<.45?52:quality<.75?74:110;return distanceSquared>far*far?2:distanceSquared>near*near?1:0}
 
 export class Game{
-  constructor(mount){this.mount=mount;this.screen=document.querySelector('#screen');this.save=new SaveSystem();this.debugMode=Boolean(this.save.data.debugMode);this.league=new LeagueSystem(this.save.data.aiProfiles);this.input=new Input(mount);this.hud=new HUD();this.minimap=new Minimap(document.querySelector('#minimap'),p=>this.scoutFromMinimap(p));this.observerMinimap=new Minimap(document.querySelector('#observer-minimap'),p=>this.observerMapCommand(p));this.audio=new AudioSystem(this.save.data.settings.volume);this.audio.setMusicMuted(this.save.data.settings.musicMuted);this.audio.setSoundsMuted(this.save.data.settings.soundsMuted);this.lastFrame=performance.now()/1000;this.state='menu';this.running=false;this.entities=[];this.combatants=[];this.kills=0;this.elapsed=0;this.lockTarget=null;this.hoverEntity=null;this.setup=defaultTeamSetup(4);this.matchSetup=freshMatchSetup();this.selectedMode='deathmatch';this.selectedMap=DEFAULT_MAP_ID;this.selectedDimensionIndex=0;this.teamStats={};this.aiBehaviorIndex=0;this.paypalModalActive=false;this.bindUI()}
+  constructor(mount){this.mount=mount;this.screen=document.querySelector('#screen');this.save=new SaveSystem();this.debugMode=Boolean(this.save.data.debugMode);this.league=new LeagueSystem(this.save.data.aiProfiles);this.input=new Input(mount);this.hud=new HUD();this.minimap=new Minimap(document.querySelector('#minimap'),p=>this.scoutFromMinimap(p));this.observerMinimap=new Minimap(document.querySelector('#observer-minimap'),p=>this.observerMapCommand(p));this.audio=new AudioSystem(this.save.data.settings.volume);this.audio.setMusicMuted(this.save.data.settings.musicMuted);this.audio.setSoundsMuted(this.save.data.settings.soundsMuted);this.lastFrame=performance.now()/1000;this.state='menu';this.running=false;this.entities=[];this.combatants=[];this.kills=0;this.elapsed=0;this.lockTarget=null;this.hoverEntity=null;this.setup=defaultTeamSetup(4);this.matchSetup=freshMatchSetup();this.selectedMode='deathmatch';this.setupModeId='deathmatch';this.gameSetup=null;this.selectedMap=DEFAULT_MAP_ID;this.selectedDimensionIndex=0;this.teamStats={};this.aiBehaviorIndex=0;this.paypalModalActive=false;this.bindUI()}
   boot(){this.setupRenderer();this.showMenu();this.loop()}
   setupRenderer(){this.renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',stencil:false});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.35));this.renderer.setSize(innerWidth,innerHeight);this.renderer.shadowMap.enabled=this.save.data.settings.shadows;this.renderer.shadowMap.type=THREE.PCFShadowMap;this.renderer.shadowMap.autoUpdate=true;this.renderer.shadowMap.needsUpdate=true;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.12;this.performanceGovernor=new PerformanceGovernor(this.renderer);this.renderer.domElement.addEventListener('pointerdown',()=>{if(this.state==='mission'&&document.pointerLockElement!==this.renderer.domElement){this._mouseCaptureClick=true;this.requestMouseCapture()}});this.mount.appendChild(this.renderer.domElement);this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,700);this.camera.position.set(0,24,23);addEventListener('resize',()=>this.resize());}
   bindUI(){this.screen.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(!action)return;
@@ -74,6 +76,13 @@ export class Game{
     } else {
       this.audio.play('button_click');
     }
+    if(action.startsWith('gamemode:')){this.selectSetupMode(action.slice(9));return}
+    if(action==='setup:launch'){this.gameSetup?.launch();return}
+    if(action==='setup:back'){if(!this.gameSetup||this.gameSetup.back())this.showMenu();return}
+    if(action.startsWith('setup:step:')){this.gameSetup?.goToStep(action.slice(11));return}
+    if(action.startsWith('setupmap:')){this.gameSetup?.selectMap(action.slice(9));return}
+    if(action.startsWith('setup:rule:')){const [,,key,raw]=action.split(':');this.applySetupRule(key,raw);return}
+    if(action.startsWith('setup:squad:')){this.applySquadTemplate(action.slice(12));return}
     if(action==='arena')this.showArena();
     else if(action==='arena:rematch')this.startArenaMatch(this.arenaConfig);
     else if(action==='arena:garage')this.showArena();
@@ -94,21 +103,21 @@ export class Game{
     else if(action==='pause:sounds'){const muted=this.audio.setSoundsMuted(!this.audio.soundsMuted);this.save.setSetting('soundsMuted',muted);this.showPauseMenu(this.pauseOptionsOpen)}
     else if(action==='pause:restart'){const missionId=this.mission?.id||'skirmish';this.pausePreviousState=null;this.startMission(missionId)}
     else if(action==='pause:menu'){this.pausePreviousState=null;this.showMenu()}
-    else if(action==='setup:add'){const limit=Math.min(MAX_PLAYERS,ALL_MAPS[this.selectedMap]?.maxTeams||MAX_PLAYERS);if(this.setup.length<limit)this.setup.push({name:DEFAULT_TEAM_NAMES[this.setup.length],colorIndex:this.setup.length%TEAM_COLORS.length,group:this.setup.length,uniformIndex:this.setup.length%SKIN_TEXTURES.length,isHuman:false});this.showGameSetup()}
-    else if(action==='setup:remove'){if(this.setup.length>2)this.setup.pop();this.showGameSetup()}
+    else if(action==='setup:add'){const limit=Math.min(MAX_PLAYERS,ALL_MAPS[this.selectedMap]?.maxTeams||MAX_PLAYERS);if(this.setup.length<limit)this.setup.push({name:DEFAULT_TEAM_NAMES[this.setup.length],colorIndex:this.setup.length%TEAM_COLORS.length,group:this.setup.length,uniformIndex:this.setup.length%SKIN_TEXTURES.length,isHuman:false});this.refreshGameSetup()}
+    else if(action==='setup:remove'){if(this.setup.length>2)this.setup.pop();this.refreshGameSetup()}
     else if(action.startsWith('setup:preset:'))this.applySetupPreset(action.slice(13))
-    else if(action.startsWith('mode:')){this.selectedMode=action.slice(5);if(this.selectedMode==='domination')this.setup.forEach((team,index)=>team.group=index);this.selectedMap=GAME_MODES[this.selectedMode]?.mapIds[0]||DEFAULT_MAP_ID;this.showGameSetup()}
-    else if(action.startsWith('map:')){const id=action.slice(4);if(GAME_MODES[this.selectedMode]?.mapIds.includes(id))this.selectedMap=id;this.showGameSetup()}
+    else if(action.startsWith('mode:'))this.selectSetupMode(action.slice(5))
+    else if(action.startsWith('map:'))this.gameSetup?.selectMap(action.slice(4))
     else if(action==='setup:randomize')this.randomizeSetup()
-    else if(action.startsWith('setup:role:')){const i=Number(action.slice(11)),becomeHuman=!this.setup[i].isHuman;this.setup.forEach(t=>t.isHuman=false);this.setup[i].isHuman=becomeHuman;this.showGameSetup()}
-    else if(action.startsWith('teamcolor:')){const i=Number(action.slice(10)),used=this.setup.map(t=>t.colorIndex);let next=(this.setup[i].colorIndex+1)%TEAM_COLORS.length;for(let k=0;k<TEAM_COLORS.length&&used.includes(next);k++)next=(next+1)%TEAM_COLORS.length;this.setup[i].colorIndex=next;this.showGameSetup()}
-    else if(action.startsWith('teamuniform:')){const i=Number(action.slice(12));this.setup[i].uniformIndex=((this.setup[i].uniformIndex||0)+1)%SKIN_TEXTURES.length;this.showGameSetup()}
-    else if(action.startsWith('teamgroup:')){if(this.selectedMode==='domination')return;const i=Number(action.slice(10));this.setup[i].group=(this.setup[i].group+1)%Math.min(this.setup.length,5);this.showGameSetup()}
-    else if(action.startsWith('setup:alliance:')){if(this.selectedMode==='domination')return;const [,,index,dir]=action.split(':');shiftTeamAlliance(this.setup,Number(index),Number(dir));this.showGameSetup()}
+    else if(action.startsWith('setup:role:')){const i=Number(action.slice(11)),becomeHuman=!this.setup[i].isHuman;this.setup.forEach(t=>t.isHuman=false);this.setup[i].isHuman=becomeHuman;this.refreshGameSetup()}
+    else if(action.startsWith('teamcolor:')){const i=Number(action.slice(10)),used=this.setup.map(t=>t.colorIndex);let next=(this.setup[i].colorIndex+1)%TEAM_COLORS.length;for(let k=0;k<TEAM_COLORS.length&&used.includes(next);k++)next=(next+1)%TEAM_COLORS.length;this.setup[i].colorIndex=next;this.refreshGameSetup()}
+    else if(action.startsWith('teamuniform:')){const i=Number(action.slice(12));this.setup[i].uniformIndex=((this.setup[i].uniformIndex||0)+1)%SKIN_TEXTURES.length;this.refreshGameSetup()}
+    else if(action.startsWith('teamgroup:')){if(this.selectedMode==='domination')return;const i=Number(action.slice(10));this.setup[i].group=(this.setup[i].group+1)%Math.min(this.setup.length,5);this.refreshGameSetup()}
+    else if(action.startsWith('setup:alliance:')){if(this.selectedMode==='domination')return;const [,,index,dir]=action.split(':');shiftTeamAlliance(this.setup,Number(index),Number(dir));this.refreshGameSetup()}
     else if(action==='rankings'){this.showRankings()}else if(action==='rankings:back'){this.showMenu()}else if(action.startsWith('rankings:')){this.rankingsMode=action.slice(9);this.showRankings()}else if(action==='buy-tickets'){this.showBuyTicketsModal()}else if(action.startsWith('gear:'))this.buyGear(action.slice(5));else if(action.startsWith('cos:'))this.handleCosmetic(action.slice(4))});
     this.screen.addEventListener('input',e=>{if(e.target.dataset.teamName!==undefined){const i=Number(e.target.dataset.teamName);this.setup[i].name=e.target.value.slice(0,14);return}
-      if(e.target.dataset.startingClass!==undefined){this.matchSetup.startingClasses[Number(e.target.dataset.startingClass)]=e.target.value;return}
-      if(e.target.dataset.setupRule){const key=e.target.dataset.setupRule;this.matchSetup[key]=e.target.type==='checkbox'?e.target.checked:(key==='aiDifficulty'?e.target.value:Number(e.target.value));if(key==='squadSize')this.showGameSetup();return}
+      if(e.target.dataset.startingClass!==undefined){this.matchSetup.startingClasses[Number(e.target.dataset.startingClass)]=e.target.value;this.refreshGameSetup();return}
+      if(e.target.dataset.setupRule){const key=e.target.dataset.setupRule;this.matchSetup[key]=e.target.type==='checkbox'?e.target.checked:(key==='aiDifficulty'?e.target.value:Number(e.target.value));if(key==='squadSize')this.refreshGameSetup();return}
       if(!e.target.dataset.setting)return;const key=e.target.dataset.setting,value=e.target.type==='checkbox'?e.target.checked:Number(e.target.value);this.save.setSetting(key,value);if(key==='volume')this.audio.setVolume(value);if(key==='musicMuted')this.audio.setMusicMuted(value);if(key==='soundsMuted')this.audio.setSoundsMuted(value);if(key==='shadows'&&this.renderer)this.performanceGovernor?.setShadowPreference(value)});
     this.screen.addEventListener('submit',e=>{if(!e.target.matches('[data-code-form]'))return;e.preventDefault();this.submitDebugCode(e.target.querySelector('[data-debug-code]')?.value)});
     addEventListener('keydown',e=>{if(this.state!=='missions'||(e.key!=='ArrowLeft'&&e.key!=='ArrowRight'))return;e.preventDefault();this.audio.play('button_click');this.cycleDimension(e.key==='ArrowRight'?1:-1)})}
@@ -141,12 +150,7 @@ export class Game{
     if(this.scene===this.menuScene)this.scene=new THREE.Scene();
     this.menuScene=null;
   }
-  showMenu(){this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;this.endRuntime();this.state='menu';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');this.screen.innerHTML=`<main class="menu menu-home"><div class="home-panel"><h1 class="logo">Destructo</h1><p class="subtitle">Build the squad. Break the battlefield.</p><div class="home-actions"><button class="btn mission-btn" data-action="missions"><i></i><span>MISSION</span></button><button class="btn primary custom-match-btn" data-action="custom-match"><i></i><span>CUSTOM MATCH</span></button><button class="btn arena-menu-btn" data-action="arena"><i></i><span>DESTRUCT-AUTO</span><small>10 BATTLE VEHICLES · 3 ARENAS</small></button><button class="btn blitz-menu-btn" data-action="blitz"><i></i><span>CRATE BLITZ</span><small>BOMB THE LATTICE · UP TO 10 PLAYERS</small></button><button class="btn dbuilder-menu-btn" data-action="dbuild"><i></i><span>D-BUILDER</span><small>3D FITTING ROOM</small></button><button class="btn casino-menu-btn" data-action="casino"><i></i><span>CASINO</span><small>3 GAMES · RARE PRIZES</small></button><button class="btn" data-action="rankings">RANKINGS</button><button class="btn" data-action="settings">SETTINGS</button></div><div class="home-meta"><span class="meta-chip">🏆 ${this.save.data.missionsWon} VICTORIES</span><span class="meta-chip">◈ ${this.save.data.chips} CHIPS</span></div></div><div class="home-hint"><span>WASD MOVE · MOUSE AIM · LMB FIRE · RMB LOCK-ON · SPACE JUMP/JETPACK · 1 PRIMARY · 2 PISTOL · G GRENADE · T THROW WEAPON · E INTERACT · F MATERIALIZE · Q SKILL · TAB SQUAD</span></div></main>`}
-  // Game setup: choose team count (2-10), each team's name, color and alliance group
-  showGameSetupLegacy(){this.endRuntime();this.state='setup';this.audio.playMusic('/music/main_theme.mp3');
-    const rows=this.setup.map((t,i)=>{const c=TEAM_COLORS[t.colorIndex%TEAM_COLORS.length];
-      const uniform=SKIN_TEXTURES[t.uniformIndex||0];return `<div class="team-row"><span class="slot ${i===0?'you':''}">${i===0?'YOU':'CPU'}</span><input class="team-name" data-team-name="${i}" maxlength="14" value="${t.name}" aria-label="Team name"><button class="swatch" data-action="teamcolor:${i}" style="background:${hex(c.color)}" title="Change aura color">${c.name.toUpperCase()} AURA</button><button class="btn uniform-btn" data-action="teamuniform:${i}">${uniform.toUpperCase()}</button><button class="btn group-btn" data-action="teamgroup:${i}">TEAM ${String.fromCharCode(65+t.group)}</button></div>`}).join('');
-    this.screen.innerHTML=`<main class="menu"><div class="screen-title"><div><span class="eyebrow">GAME SETUP</span><h2>SETUP TEAMS</h2></div><strong>${this.setup.length} / ${MAX_PLAYERS} PLAYERS</strong></div><p class="subtitle">Same team letter = allies · color controls the body aura · uniform applies to the whole team.</p><div class="setup-list">${rows}</div><div class="menu-actions" style="margin-top:20px"><button class="btn" data-action="setup:remove" ${this.setup.length<=2?'disabled':''}>− REMOVE PLAYER</button><button class="btn" data-action="setup:add" ${this.setup.length>=MAX_PLAYERS?'disabled':''}>+ ADD PLAYER</button><button class="btn primary" data-action="deploy">START BATTLE</button><button class="btn" data-action="menu">BACK</button></div></main>`}
+  showMenu(){this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;this.endRuntime();this.state='menu';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');this.screen.innerHTML=`<main class="menu menu-home"><div class="home-panel"><h1 class="logo">Destructo</h1><p class="subtitle">Build the squad. Break the battlefield.</p><div class="home-actions"><button class="btn mission-btn" data-action="missions"><i></i><span>MISSION</span></button><button class="btn primary custom-match-btn" data-action="custom-match"><i></i><span>CUSTOM GAME</span></button><button class="btn dbuilder-menu-btn" data-action="dbuild"><i></i><span>D-BUILDER</span><small>3D FITTING ROOM</small></button><button class="btn casino-menu-btn" data-action="casino"><i></i><span>CASINO</span><small>3 GAMES · RARE PRIZES</small></button><button class="btn" data-action="rankings">RANKINGS</button><button class="btn" data-action="settings">SETTINGS</button></div><div class="home-meta"><span class="meta-chip">🏆 ${this.save.data.missionsWon} VICTORIES</span><span class="meta-chip">◈ ${this.save.data.chips} CHIPS</span></div></div><div class="home-hint"><span>WASD MOVE · MOUSE AIM · LMB FIRE · RMB LOCK-ON · SPACE JUMP/JETPACK · 1 PRIMARY · 2 PISTOL · G GRENADE · T THROW WEAPON · E INTERACT · F MATERIALIZE · Q SKILL · TAB SQUAD</span></div></main>`}
   cycleDimension(direction){this.selectedDimensionIndex=(this.selectedDimensionIndex+direction+CAMPAIGN_DIMENSIONS.length)%CAMPAIGN_DIMENSIONS.length;this.showMissions(direction)}
   showMissions(direction=0){this.endRuntime();this.state='missions';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');const dimension=CAMPAIGN_DIMENSIONS[this.selectedDimensionIndex]||CAMPAIGN_DIMENSIONS[0],missions=dimension.missionIds.map(id=>CAMPAIGN_MISSIONS[id]).filter(Boolean);const cards=missions.map((m,i)=>{const complete=this.save.campaignCompleted(m.id),locked=!this.campaignMissionUnlocked(m),requirement=CAMPAIGN_MISSIONS[m.requires]?.order;return`<article class="campaign-node ${locked?'locked':''} ${complete?'complete':''}" style="--delay:${i*.1}s"><span class="campaign-number">${String(m.order).padStart(2,'0')}</span><div><span class="eyebrow">${complete?'MISSION COMPLETE':locked?'CLASSIFIED':this.debugMode?'DEBUG ACCESS':m.order===1?'TRAINING OPERATION':'GAIA OPERATION'}</span><h3>${m.name.toUpperCase()}</h3><p>${m.briefing}</p><div class="campaign-reward">◈ ${m.reward} CHIPS ${complete?'· REPLAYABLE':''}</div></div><button class="btn ${locked?'':'primary'}" ${locked?'disabled':''} data-action="mission:${m.id}">${locked?`LOCKED · COMPLETE MISSION ${requirement}`:complete?'REPLAY MISSION':'DEPLOY'}</button></article>`}).join('');const empty=`<section class="dimension-locked"><span>${dimension.icon}</span><h3>PORTAL CALIBRATING</h3><p>${dimension.description}</p><strong>COMPLETE GAIA OPERATIONS TO STABILIZE THIS DIMENSION</strong></section>`;this.screen.innerHTML=`<main class="menu campaign-menu dimension-screen ${direction<0?'dimension-from-left':direction>0?'dimension-from-right':''}" style="--dimension-accent:${dimension.accent};--dimension-secondary:${dimension.secondary}"><header class="dimension-carousel"><button class="dimension-arrow" data-action="dimension:prev" aria-label="Previous dimension">‹</button><div class="dimension-planet" aria-hidden="true"><i></i><b>${dimension.icon}</b><span></span></div><div class="dimension-copy"><span class="eyebrow">DIMENSION ${String(dimension.order).padStart(2,'0')} · ${dimension.status}</span><h2>${dimension.name.toUpperCase()}</h2><strong>${dimension.subtitle}</strong><p>${dimension.description}</p></div><button class="dimension-arrow" data-action="dimension:next" aria-label="Next dimension">›</button></header><nav class="dimension-dots" aria-label="Dimensions">${CAMPAIGN_DIMENSIONS.map((d,i)=>`<i class="${i===this.selectedDimensionIndex?'active':''}" title="${d.name}"></i>`).join('')}</nav><div class="campaign-summary"><span>${dimension.name.toUpperCase()} CAMPAIGN</span><strong>${this.save.data.campaign.completedMissionIds.length} / ${Object.keys(CAMPAIGN_MISSIONS).length} COMPLETE</strong><small>${this.debugMode?'DEBUG MODE · ALL MISSIONS UNLOCKED':'PREV / NEXT OR ← →'}</small></div><div class="campaign-path">${missions.length?'<i></i>':''}${cards||empty}</div><button class="btn" style="margin-top:22px" data-action="menu">BACK</button></main>`}
   showRankings(){this.endRuntime();this.state='leaderboard';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');const mode=this.rankingsMode||'deathmatch',record=this.save.modeRecord(mode);const rows=this.league.leaderboard(this.save.data,mode).map((p,i)=>`<tr class="${p.player?'is-player':''}"><td>#${i+1}</td><td><strong>${escapeHtml(p.name)}</strong><small>${p.player?'PLAYER':`CPU · ${p.kills||0} KILLS`}</small></td><td>${rankFor(p.mmr)}</td><td>${p.mmr}</td><td>${p.wins}-${p.losses}</td><td>${p.streak>0?`🔥 ${p.streak}`:'—'}</td></tr>`).join('');this.screen.innerHTML=`<main class="menu leaderboard-menu"><div class="screen-title"><div><span class="eyebrow">GLOBAL COMBAT CIRCUIT</span><h2>RANKINGS</h2></div><strong>${record.mmr} MMR</strong></div><div class="rankings-tabs"><button class="btn ${mode==='deathmatch'?'primary':''}" data-action="rankings:deathmatch">DEATHMATCH</button><button class="btn ${mode==='domination'?'primary':''}" data-action="rankings:domination">TOWER DOMINION</button></div><div class="leaderboard-scroll"><table class="leaderboard-table"><thead><tr><th>RANK</th><th>COMPETITOR</th><th>DIVISION</th><th>MMR</th><th>RECORD</th><th>STREAK</th></tr></thead><tbody>${rows}</tbody></table></div><button class="btn" style="margin-top:22px" data-action="rankings:back">BACK</button></main>`}
@@ -282,21 +286,12 @@ export class Game{
     this.showDBuild('crateDesign');
   }
   // ── DESTRUCT-AUTO: vehicle battle arena ───────────────────────────────────
-  showArena(){
-    this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;
-    this.arenaSelect?.dispose();this.endRuntime();
-    this.state='arena-select';this.presentMenuBackdrop();this.audio.playMusic('/music/urban_vehicle_warfare.mp3');
-    this.arenaConfig={...DEFAULT_ARENA_CONFIG,...this.arenaConfig};
-    this.arenaSelect=new ArenaSelect({
-      root:this.screen,audio:this.audio,config:this.arenaConfig,
-      onLaunch:config=>{this.arenaSelect=null;this.startArenaMatch(config)},
-      onBack:()=>{this.arenaSelect?.dispose();this.arenaSelect=null;this.showMenu()},
-    });
-    this.arenaSelect.open();
-  }
+  // The garage lives inside the centralized Game Setup screen now; every entry
+  // point into it just opens that screen on the Destruct-Auto card.
+  showArena(){this.showGameSetup('destruct-auto')}
   startArenaMatch(config=this.arenaConfig){
     this.arenaConfig={...DEFAULT_ARENA_CONFIG,...config};
-    this.arenaSelect?.dispose();this.arenaSelect=null;
+    this.gameSetup?.dispose();this.gameSetup=null;
     this.endRuntime();this.disposeMenuStage();
     this.screen.innerHTML=`<main class="menu mission-end"><h2>STARTING ENGINES</h2><p class="subtitle">DESTRUCT-AUTO · ${escapeHtml(this.arenaConfig.mapId.toUpperCase())}…</p></main>`;
     this.hud.show(false);
@@ -324,21 +319,12 @@ export class Game{
     document.exitPointerLock?.();
   }
   // ── CRATE BLITZ: grid demolition ──────────────────────────────────────────
-  showBlitz(){
-    this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;
-    this.blitzSelect?.dispose();this.endRuntime();
-    this.state='blitz-select';this.presentMenuBackdrop();this.audio.playMusic('/music/neutral_mayhem.mp3');
-    this.blitzConfig={...DEFAULT_BLITZ_CONFIG,...this.blitzConfig};
-    this.blitzSelect=new BlitzSelect({
-      root:this.screen,audio:this.audio,config:this.blitzConfig,
-      onLaunch:config=>{this.blitzSelect=null;this.startBlitzMatch(config)},
-      onBack:()=>{this.blitzSelect?.dispose();this.blitzSelect=null;this.showMenu()},
-    });
-    this.blitzSelect.open();
-  }
+  // Same story as the garage: the lattice lobby is a panel of the Game Setup
+  // screen rather than a screen of its own.
+  showBlitz(){this.showGameSetup('crate-blitz')}
   startBlitzMatch(config=this.blitzConfig){
     this.blitzConfig={...DEFAULT_BLITZ_CONFIG,...config};
-    this.blitzSelect?.dispose();this.blitzSelect=null;
+    this.gameSetup?.dispose();this.gameSetup=null;
     this.endRuntime();this.disposeMenuStage();
     this.screen.innerHTML=`<main class="menu mission-end"><h2>LIGHTING THE FUSE</h2><p class="subtitle">CRATE BLITZ · ${escapeHtml(this.blitzConfig.arenaId.toUpperCase())}…</p></main>`;
     this.hud.show(false);
@@ -1982,12 +1968,25 @@ export class Game{
       this.endMission(playerWon);
     };
   }
-  applySetupPreset(id){const count=id==='duel'?2:id==='chaos'?8:4;this.setup=defaultTeamSetup(count);if(id==='pairs')this.setup.forEach((t,i)=>t.group=Math.floor(i/2));this.matchSetup=freshMatchSetup({squadSize:id==='duel'?2:id==='chaos'?2:3,aiDifficulty:id==='chaos'?'veteran':'regular'});this.showGameSetup()}
-  randomizeSetup(){const colors=[...TEAM_COLORS.keys()].sort(()=>Math.random()-.5);this.setup.forEach((t,i)=>{t.colorIndex=colors[i%colors.length];t.uniformIndex=Math.floor(Math.random()*SKIN_TEXTURES.length);t.group=i});this.showGameSetup()}
+  applySetupPreset(id){const count=id==='duel'?2:id==='chaos'?8:4;this.setup=defaultTeamSetup(count);if(id==='pairs')this.setup.forEach((t,i)=>t.group=Math.floor(i/2));this.matchSetup=freshMatchSetup({squadSize:id==='duel'?2:id==='chaos'?2:3,aiDifficulty:id==='chaos'?'veteran':'regular'});this.refreshGameSetup()}
+  randomizeSetup(){const colors=[...TEAM_COLORS.keys()].sort(()=>Math.random()-.5);this.setup.forEach((t,i)=>{t.colorIndex=colors[i%colors.length];t.uniformIndex=Math.floor(Math.random()*SKIN_TEXTURES.length);t.group=i});this.refreshGameSetup()}
+  // Chip rows in the rules desk speak `setup:rule:<key>:<value>`; `toggle` flips
+  // a boolean so on/off reads as one chip instead of a stray checkbox.
+  applySetupRule(key,raw){
+    if(raw==='toggle')this.matchSetup[key]=!this.matchSetup[key];
+    else this.matchSetup[key]=key==='aiDifficulty'?raw:Number(raw);
+    this.refreshGameSetup();
+  }
+  applySquadTemplate(id){
+    const template=SQUAD_TEMPLATES.find(t=>t.id===id);
+    if(!template)return;
+    this.matchSetup.startingClasses=[...template.classes];
+    this.refreshGameSetup();
+  }
   hasHostileSetup(){return this.setup.some((a,i)=>this.setup.some((b,j)=>i!==j&&a.group!==b.group))}
   captureSetupView(){
     if(this.state!=='setup')return null;
-    const menu=this.screen.querySelector('.setup-menu'),list=this.screen.querySelector('.setup-list'),active=document.activeElement;
+    const menu=this.screen.querySelector('.setup-main'),list=this.screen.querySelector('.setup-list'),active=document.activeElement;
     const focus=active&&this.screen.contains(active)?{
       teamName:active.dataset?.teamName,startingClass:active.dataset?.startingClass,setupRule:active.dataset?.setupRule,action:active.dataset?.action,
       selectionStart:Number.isFinite(active.selectionStart)?active.selectionStart:null,selectionEnd:Number.isFinite(active.selectionEnd)?active.selectionEnd:null,
@@ -1996,49 +1995,43 @@ export class Game{
   }
   restoreSetupView(view){
     if(!view)return;
-    const menu=this.screen.querySelector('.setup-menu'),list=this.screen.querySelector('.setup-list');
+    const menu=this.screen.querySelector('.setup-main'),list=this.screen.querySelector('.setup-list');
     const restoreScroll=()=>{this.screen.scrollTop=view.screenTop;if(menu)menu.scrollTop=view.menuTop;if(list)list.scrollTop=view.listTop};restoreScroll();
     const f=view.focus;if(!f)return;
     const selector=f.teamName!==undefined?`[data-team-name="${f.teamName}"]`:f.startingClass!==undefined?`[data-starting-class="${f.startingClass}"]`:f.setupRule?`[data-setup-rule="${f.setupRule}"]`:f.action?`[data-action="${f.action}"]`:null;
     const target=selector?this.screen.querySelector(selector):null;if(!target)return;target.focus?.({preventScroll:true});
     if(f.selectionStart!==null&&target.setSelectionRange)target.setSelectionRange(f.selectionStart,f.selectionEnd);restoreScroll();
   }
-  // ── Game setup: team-oriented Battle Lab (alliance board for Deathmatch,
-  //    free-for-all contender grid for Tower Dominion) ────────────────────────
-  showGameSetup(){const setupView=this.captureSetupView();this.endRuntime();this.state='setup';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');
-    const dominationMode=this.selectedMode==='domination';
-    if(dominationMode)this.setup.forEach((team,index)=>team.group=index);else normalizeAllianceGroups(this.setup);
-    const option=(value,label,current)=>`<option value="${value}" ${String(current)===String(value)?'selected':''}>${label}</option>`;
-    const hostile=this.hasHostileSetup(),humanIndex=this.setup.findIndex(t=>t.isHuman),observerOnly=humanIndex<0;
-    const mapLimit=Math.min(MAX_PLAYERS,ALL_MAPS[this.selectedMap]?.maxTeams||MAX_PLAYERS),withinMapLimit=this.setup.length<=mapLimit;
-    const displaySquadSize=dominationMode?DOMINATION_RULES.squadSize:this.matchSetup.squadSize;
-    // one card per team: controller, name, aura, uniform (+ alliance mover in Deathmatch)
-    const teamCard=(t,i)=>{const c=TEAM_COLORS[t.colorIndex%TEAM_COLORS.length],uniform=SKIN_TEXTURES[t.uniformIndex||0],human=Boolean(t.isHuman);
-      return `<div class="team-card ${human?'human-card':''}" style="--team:${hex(c.color)}"><div class="team-card-top"><button class="role-switch ${human?'human':'cpu'}" data-action="setup:role:${i}" title="Switch between player and AI control"><span>${human?'PLAYER':'AI'}</span><small>${human?'CONTROL':'AUTOPILOT'}</small></button><input class="team-name" data-team-name="${i}" maxlength="14" value="${escapeHtml(t.name)}" aria-label="Team name"></div><div class="team-card-looks"><button class="aura-btn" data-action="teamcolor:${i}" style="--aura:${hex(c.color)}" title="Change aura color"><i></i><span>${c.name.toUpperCase()}</span></button><button class="uniform-preview" data-action="teamuniform:${i}" title="Change uniform texture"><canvas width="128" height="128" data-skin="${uniform}"></canvas><span>${uniform.toUpperCase()}</span></button></div>${dominationMode?'':`<div class="ally-move"><button class="ally-arrow" data-action="setup:alliance:${i}:-1" title="Move to the previous alliance">◀</button><span>ALLIANCE ${String.fromCharCode(65+t.group)}</span><button class="ally-arrow" data-action="setup:alliance:${i}:1" title="Move right — past the last column founds a new alliance">▶</button></div>`}</div>`};
-    let roster;
-    if(dominationMode){
-      roster=`<div class="ffa-banner"><strong>${this.setup.length}-WAY FREE FOR ALL</strong><span>Every team fights alone in Tower Dominion — hold the pedestals to score.</span></div><div class="ffa-grid">${this.setup.map((t,i)=>teamCard(t,i)).join('')}</div>`;
-    }else{
-      const groups=[...new Set(this.setup.map(t=>t.group))].sort((a,b)=>a-b);
-      const columns=groups.map(g=>{const members=this.setup.map((t,i)=>({t,i})).filter(({t})=>t.group===g);
-        return `<div class="alliance-column"><header class="alliance-head"><strong>ALLIANCE ${String.fromCharCode(65+g)}</strong><small>${members.length} TEAM${members.length>1?'S':''} · ${members.length*displaySquadSize} STARTING UNITS</small></header>${members.map(({t,i})=>teamCard(t,i)).join('')}</div>`}).join('');
-      const ghost=groups.length<Math.min(this.setup.length,5)?`<div class="alliance-column ghost"><header class="alliance-head"><strong>+ NEW ALLIANCE</strong></header><p>Push a team ▶ past the last column to found its own alliance.</p></div>`:'';
-      roster=`<div class="alliance-board">${columns}${ghost}</div>`;
-    }
-    const classOptions=current=>Object.entries(CLASSES).map(([id,c])=>option(id,c.name.toUpperCase(),current)).join('');
-    const startingSlots=Array.from({length:displaySquadSize},(_,i)=>dominationMode?`<label>STARTING UNIT ${i+1}<select disabled><option>COMMANDO · ASSAULT RIFLE</option></select></label>`:`<label>STARTING UNIT ${i+1}<select data-starting-class="${i}">${classOptions(this.matchSetup.startingClasses[i]||'scout')}</select></label>`).join('');
-    const modeRules=dominationMode
-      ?`<label>MAX SCORE TO WIN<select data-setup-rule="maxScore">${[50,100,150,250,500].map(v=>option(v,`${v} POINTS`,this.matchSetup.maxScore)).join('')}</select></label><label>RESPAWN TIME<select data-setup-rule="dominationRespawnSeconds">${[3,5,8,12].map(v=>option(v,`${v} SEC`,this.matchSetup.dominationRespawnSeconds)).join('')}</select></label><label>CAPTURE TIME<select disabled><option>${CAPTURE_SECONDS} SECONDS</option></select></label><label class="toggle-rule">ENDLESS REINFORCEMENTS<input type="checkbox" checked disabled></label>`
-      :`<label>SUDDEN DEATH<select data-setup-rule="matchMinutes">${[3,5,8,12].map(v=>option(v,`${v} MIN`,this.matchSetup.matchMinutes)).join('')}</select></label><label class="toggle-rule">REINFORCEMENTS<input type="checkbox" data-setup-rule="reinforcements" ${this.matchSetup.reinforcements?'checked':''}></label><label>REINFORCE EVERY<select data-setup-rule="reinforcementSeconds">${[5,10,15,25,40].map(v=>option(v,`${v} SEC`,this.matchSetup.reinforcementSeconds)).join('')}</select></label>`;
-    const battleShape=dominationMode?`${this.setup.length}-WAY FFA`:allianceSummary(this.setup);
-    const modeCards=Object.values(GAME_MODES).map(mode=>`<button class="mode-card ${mode.id===this.selectedMode?'selected':''}" data-action="mode:${mode.id}"><small>${mode.kicker}</small><strong>${mode.title}</strong><span>${mode.description}</span></button>`).join('');
-    const mapCards=mapsForMode(this.selectedMode).map(map=>`<button class="map-card ${map.id===this.selectedMap?'selected':''}" data-action="map:${map.id}" style="--map-accent:${map.accent};--map-art:url('/assets/textures/maps/${map.texture}.webp')"><span class="map-icon">${map.icon}</span><small>${map.tag}</small><strong>${map.title}</strong><p>${map.description}</p><em>${map.weather}${map.towerCount?` · ${map.towerCount} TOWERS`:map.maxTeams?` · ${map.sizeClass} · MAX ${map.maxTeams} TEAMS`:''}</em></button>`).join('');
-    const conflictLabel=!withinMapLimit?`REMOVE ${this.setup.length-mapLimit} TEAM${this.setup.length-mapLimit>1?'S':''} FOR THIS MAP`:hostile?(observerOnly?'AI SIMULATION READY':`${battleShape} · READY TO DEPLOY`):'ALL TEAMS ARE ALLIED — SPLIT THE ALLIANCES';
-    const deployable=hostile&&withinMapLimit;
-    this.screen.innerHTML=`<main class="menu setup-menu"><div class="screen-title"><div><span class="eyebrow">GAME SETUP · ${GAME_MODES[this.selectedMode].kicker}</span><h2>${dominationMode?'DOMINION LAB':'BATTLE LAB'}</h2></div><strong>${this.setup.length} / ${mapLimit} TEAMS · ${battleShape}</strong></div><section class="mode-select"><div class="map-select-head"><span class="eyebrow">GAME MODES</span><strong>${GAME_MODES[this.selectedMode].title}</strong></div><div class="mode-grid">${modeCards}</div></section><section class="map-select"><div class="map-select-head"><span class="eyebrow">CHOOSE MAP</span><strong>${ALL_MAPS[this.selectedMap].title}</strong></div><div class="map-grid ${dominationMode?'domination-maps':''}">${mapCards}</div></section><div class="preset-strip"><button class="btn" data-action="setup:preset:duel">DUEL 1v1</button><button class="btn" data-action="setup:preset:pairs">2v2 SQUADS</button><button class="btn" data-action="setup:preset:classic">CLASSIC FFA</button><button class="btn" data-action="setup:preset:chaos">CHAOS ×8</button><button class="btn" data-action="setup:randomize">RANDOMIZE LOOKS</button></div><div class="control-status ${observerOnly?'observer':'playing'}"><strong>${observerOnly?'OBSERVER-ONLY MATCH':`PLAYING AS ${escapeHtml(this.setup[humanIndex]?.name||'YOU').toUpperCase()}`}</strong><span>${observerOnly?'All teams are AI controlled · broadcast opens at kickoff':'Click another AI badge to transfer player control · click PLAYER again to observe'}</span></div><div class="setup-layout"><section class="roster-panel"><div class="setup-list">${roster}</div><div class="roster-actions"><button class="btn" data-action="setup:remove" ${this.setup.length<=2?'disabled':''}>− TEAM</button><button class="btn" data-action="setup:add" ${this.setup.length>=mapLimit?'disabled':''}>+ TEAM</button></div></section><aside class="rules-panel"><h3>MATCH RULES</h3><label>NUMBER OF STARTING UNITS<select ${dominationMode?'disabled':'data-setup-rule="squadSize"'}>${dominationMode?'<option>4 COMMANDOS · LOCKED</option>':[1,2,3,4,5].map(v=>option(v,`${v} UNIT${v>1?'S':''}`,this.matchSetup.squadSize)).join('')}</select></label>${startingSlots}<label>STARTING AMMO<select data-setup-rule="startingAmmo">${[30,60,90,150,240].map(v=>option(v,v,this.matchSetup.startingAmmo)).join('')}</select></label><label>CPU SKILL<select data-setup-rule="aiDifficulty">${option('rookie','ROOKIE',this.matchSetup.aiDifficulty)}${option('regular','REGULAR',this.matchSetup.aiDifficulty)}${option('veteran','VETERAN',this.matchSetup.aiDifficulty)}</select></label>${modeRules}<div class="supply-plan"><strong>${dominationMode?'3 NEUTRAL CRATE RELAYS':`${this.setup.length} TEAM DEPOTS + 4 RARE RELAYS`}</strong><span>${dominationMode?'NO D-BUILDERS · FIELD DROPS ONLY':'7 COMMON CRATES AT EVERY DROP SPOT'}</span><span>${dominationMode?`${ALL_MAPS[this.selectedMap].towerCount} TOWERS · FIRST TO ${this.matchSetup.maxScore}`:'THEN NORMAL TIMERS AND CAPS'}</span></div></aside></div><div class="setup-footer"><span class="conflict-check ${deployable?'ready':'blocked'}">${conflictLabel}</span><button class="btn" data-action="menu">BACK</button><button class="btn primary" data-action="deploy" ${deployable?'':'disabled'}>${observerOnly?'WATCH AI BATTLE':'START BATTLE'}</button></div></main>`;
-    if(this.selectedMap==='crown'){const supply=this.screen.querySelector('.supply-plan');if(supply)supply.innerHTML='<strong>1 SUMMIT DROP ZONE · ENTIRE MAP</strong><span>3 COMMON CRATES EVERY 1–5 SECONDS</span><span>CONTROL THE CROWN OR GET BURIED IN IT</span>'}
-    this.screen.querySelectorAll('canvas[data-skin]').forEach(canvas=>paintSkinPreview(canvas,canvas.dataset.skin));this.restoreSetupView(setupView);}
-  endRuntime(){this.endArena();this.endBlitz();this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
+  // ── Game Setup: one screen for every mode ────────────────────────────────
+  // The shell owns the chrome and mounts a mode panel — the infantry Battle
+  // Lab, the Destruct-Auto garage, the Crate Blitz lattice lobby, or the
+  // campaign briefing. Callers name a mode; everything else is the shell's.
+  showGameSetup(modeId=this.setupModeId){
+    const mode=setupModeById(modeId);
+    this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;
+    this.gameSetup?.dispose();this.gameSetup=null;
+    this.endRuntime();
+    this.setupModeId=mode.id;
+    if(mode.modeKey){this.selectedMode=mode.modeKey;if(!GAME_MODES[mode.modeKey]?.mapIds.includes(this.selectedMap))this.selectedMap=GAME_MODES[mode.modeKey]?.mapIds[0]||DEFAULT_MAP_ID}
+    this.state='setup';this.presentMenuBackdrop();
+    this.gameSetup=new GameSetup({root:this.screen,game:this,audio:this.audio,modeId:mode.id});
+    this.gameSetup.open();
+  }
+  // Swap the mode without tearing the shell down, so the garage keeps its
+  // WebGL context and every panel keeps whatever the player already dialled in.
+  selectSetupMode(modeId){
+    const mode=setupModeById(modeId);
+    if(this.state!=='setup'||!this.gameSetup){this.showGameSetup(mode.id);return}
+    this.setupModeId=mode.id;
+    if(mode.modeKey){this.selectedMode=mode.modeKey;if(!GAME_MODES[mode.modeKey]?.mapIds.includes(this.selectedMap))this.selectedMap=GAME_MODES[mode.modeKey]?.mapIds[0]||DEFAULT_MAP_ID}
+    this.gameSetup.selectMode(mode.id);
+  }
+  // Re-render the active panel only. Called by every setup control.
+  refreshGameSetup(){
+    if(this.state!=='setup'||!this.gameSetup){this.showGameSetup();return}
+    this.gameSetup.refreshBody();
+  }
+  endRuntime(){this.gameSetup?.dispose();this.gameSetup=null;this.endArena();this.endBlitz();this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
   disposeScene(){if(!this.scene)return;this.scene.traverse(o=>{if(o.geometry)o.geometry.dispose?.();if(o.material&&!Array.isArray(o.material))o.material.dispose?.()});this.scene.clear();this.materials?.dispose?.();this.world?.dispose?.();this.materials=null;this.world=null}
   resize(){const w=innerWidth,h=innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h)}
   loop(){if(this.running)return;this.running=true;const frame=()=>{requestAnimationFrame(frame);const time=performance.now()/1000,dt=time-this.lastFrame;this.lastFrame=time;const updateStart=performance.now();this.update(dt,time);const renderStart=performance.now();this.renderer.render(this.scene,this.camera);const frameEnd=performance.now();if(['mission','observer','victory_sequence'].includes(this.state))this.performanceGovernor?.update(dt,{...this.combat?.diagnostics?.(),...this._perfBreakdown,updateMs:renderStart-updateStart,renderMs:frameEnd-renderStart})};frame()}

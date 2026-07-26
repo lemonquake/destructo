@@ -68,7 +68,9 @@ export function drawArenaPreview(canvas, arenaDef, seats, random = Math.random) 
 }
 
 export class BlitzSelect {
-  constructor({ root, audio, config, onLaunch, onBack }) {
+  // `embedded` drops the screen chrome (title block + footer) so the lobby can
+  // be mounted inside the centralized Game Setup shell, which supplies both.
+  constructor({ root, audio, config, onLaunch, onBack, onChange, embedded = false }) {
     this.root = root;
     this.audio = audio;
     this.config = { ...DEFAULT_BLITZ_CONFIG, ...config };
@@ -77,9 +79,12 @@ export class BlitzSelect {
       : defaultSeats(4, this.config.crewCount);
     this.onLaunch = onLaunch;
     this.onBack = onBack;
+    this.onChange = onChange;
+    this.embedded = embedded;
     this.openPalette = null;   // slot whose colour picker is showing
   }
   open() { this.render(); }
+  mount(container) { this.root = container; this.render(); }
 
   // ── state ────────────────────────────────────────────────────────────────
   set(key, value) {
@@ -216,15 +221,26 @@ export class BlitzSelect {
         <i></i>${spec.name}<small>${spec.hp > 1 ? `${spec.hp} BLASTS` : 'ONE BLAST'}</small>
       </span>`).join('');
 
-    this.root.innerHTML = `
-      <main class="menu arena-select blitz-select">
+    const head = this.embedded ? '' : `
         <div class="arena-select-head">
           <div>
             <span class="eyebrow">CRATE BLITZ · GRID DEMOLITION</span>
             <h2>SET UP THE MATCH</h2>
           </div>
           <span class="arena-head-note">EVERY DESTRUCTO IS IDENTICAL — WHAT YOU DIG OUT OF THE RUBBLE DECIDES IT</span>
-        </div>
+        </div>`;
+    const footer = this.embedded ? '' : `
+        <div class="arena-select-footer">
+          <span class="arena-summary" data-blitz-summary></span>
+          <button class="btn" data-blitz="back">BACK</button>
+          <button class="btn primary" data-blitz="launch">LIGHT THE FUSE</button>
+        </div>`;
+    const open = this.embedded ? '<div class="arena-select blitz-select embedded">' : '<main class="menu arena-select blitz-select">';
+    const close = this.embedded ? '</div>' : '</main>';
+
+    this.root.innerHTML = `
+      ${open}
+        ${head}
 
         <div class="blitz-setup">
           <section class="blitz-lobby">
@@ -268,22 +284,19 @@ export class BlitzSelect {
           </section>
         </div>
 
+        ${this.embedded ? '' : `
         <section class="arena-map-strip">
           <span class="eyebrow">ARENA</span>
           <div class="arena-map-grid">${arenas}</div>
-        </section>
+        </section>`}
 
         <div class="blitz-powerups">
           <span class="eyebrow">HIDDEN IN THE RUBBLE</span>
           <div>${drops}</div>
         </div>
 
-        <div class="arena-select-footer">
-          <span class="arena-summary" data-blitz-summary></span>
-          <button class="btn" data-blitz="back">BACK</button>
-          <button class="btn primary" data-blitz="launch">LIGHT THE FUSE</button>
-        </div>
-      </main>`;
+        ${footer}
+      ${close}`;
 
     this.bindStatic();
     this.refresh();
@@ -318,6 +331,45 @@ export class BlitzSelect {
       step.disabled = next < MIN_PLAYERS || next > MAX_PLAYERS;
     }
     this.drawPreview();
+    this.onChange?.(this.config);
+  }
+  // What the Game Setup shell shows in its footer. A lattice lobby is always
+  // legal — seat counts and crews are clamped as they are edited.
+  brief() {
+    const mode = BLITZ_TEAM_MODES[this.config.teamMode];
+    return {
+      summary: this.summary(), ready: true, blocked: null, launchLabel: 'LIGHT THE FUSE',
+      note: `${this.config.seats.length} DESTRUCTOS · ${mode.title}`,
+    };
+  }
+  // ── the map step, handed to the Game Setup shell ─────────────────────────
+  // Each card paints a real generated lattice, so the density and material mix
+  // of an arena are visible before it is picked. The seed is derived from the
+  // arena id so a card never reshuffles itself while it is being looked at.
+  get selectedMapId() { return this.config.arenaId; }
+  setMap(id) { if (!BLITZ_ARENAS[id]) return; this.config.arenaId = id; this.onChange?.(this.config); }
+  mapOptions() {
+    const seats = this.config.seats;
+    return Object.values(BLITZ_ARENAS).map(arena => ({
+      id: arena.id, title: arena.title, tag: arena.tag, description: arena.description,
+      icon: arena.icon, accent: arena.accent, art: null, warning:
+        seats.length > arena.spawns.length ? `SEATS ${arena.spawns.length} · YOU HAVE ${seats.length}` : null,
+      meta: `${arena.weather} · ${arena.cols}×${arena.rows} TILES`,
+      facts: [
+        { k: 'CONDITIONS', v: arena.weather },
+        { k: 'LATTICE', v: `${arena.cols} × ${arena.rows} TILES` },
+        { k: 'SPAWN PADS', v: `${arena.spawns.length} SEATS` },
+        { k: 'IN THE BOARD', v: `${seats.length} DESTRUCTOS` },
+      ],
+      // The shell calls this once the card's canvas is in the document.
+      paint: canvas => {
+        let state = 0;
+        for (let i = 0; i < arena.id.length; i++) state = (state * 31 + arena.id.charCodeAt(i)) >>> 0;
+        state = state || 1;
+        const random = () => { state = (state * 1664525 + 1013904223) >>> 0; return state / 0x100000000; };
+        drawArenaPreview(canvas, arena, seats, random);
+      },
+    }));
   }
 
   drawPreview() {

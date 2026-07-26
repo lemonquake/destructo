@@ -113,14 +113,19 @@ export const DEFAULT_ARENA_CONFIG = Object.freeze({
 });
 
 export class ArenaSelect {
-  constructor({ root, audio, config, onLaunch, onBack }) {
+  // `embedded` drops the screen chrome (title block + footer) so the panel can
+  // be mounted inside the centralized Game Setup shell, which supplies both.
+  constructor({ root, audio, config, onLaunch, onBack, onChange, embedded = false }) {
     this.root = root;
     this.audio = audio;
     this.config = { ...DEFAULT_ARENA_CONFIG, ...config };
     this.onLaunch = onLaunch;
     this.onBack = onBack;
+    this.onChange = onChange;
+    this.embedded = embedded;
   }
   open() { this.render(); }
+  mount(container) { this.root = container; this.render(); }
   set(key, value) {
     this.config[key] = value;
     if (key === 'teamMode' && value === 'teams') this.config.driverCount = Math.max(2, Math.min(MAX_TEAM_SIZE * 2, this.config.driverCount));
@@ -202,15 +207,26 @@ export class ArenaSelect {
         <strong>${diff.title}</strong>
       </button>`).join('');
 
-    this.root.innerHTML = `
-      <main class="menu arena-select">
+    const head = this.embedded ? '' : `
         <div class="arena-select-head">
           <div>
             <span class="eyebrow">DESTRUCT-AUTO · VEHICLE COMBAT</span>
             <h2>PICK YOUR DESTRUCT-AUTO</h2>
           </div>
           <span class="arena-head-note">EVERY DRIVER GETS A DIFFERENT CHASSIS — CHOOSE FIRST, THE CPUs DRAFT WHAT IS LEFT</span>
-        </div>
+        </div>`;
+    const footer = this.embedded ? '' : `
+        <div class="arena-select-footer">
+          <span class="arena-summary" data-arena-summary></span>
+          <button class="btn" data-arena="back">BACK</button>
+          <button class="btn primary" data-arena="launch">START ENGINES</button>
+        </div>`;
+    const open = this.embedded ? '<div class="arena-select embedded">' : '<main class="menu arena-select">';
+    const close = this.embedded ? '</div>' : '</main>';
+
+    this.root.innerHTML = `
+      ${open}
+        ${head}
         <div class="arena-select-body">
           <section class="arena-showroom" style="--team:${teamColor}">
             <canvas class="arena-preview-canvas" data-arena-preview></canvas>
@@ -243,16 +259,13 @@ export class ArenaSelect {
             </div>
           </section>
         </div>
+        ${this.embedded ? '' : `
         <section class="arena-map-strip">
           <span class="eyebrow">ARENA</span>
           <div class="arena-map-grid">${maps}</div>
-        </section>
-        <div class="arena-select-footer">
-          <span class="arena-summary" data-arena-summary></span>
-          <button class="btn" data-arena="back">BACK</button>
-          <button class="btn primary" data-arena="launch">START ENGINES</button>
-        </div>
-      </main>`;
+        </section>`}
+        ${footer}
+      ${close}`;
 
     const canvas = this.root.querySelector('[data-arena-preview]');
     // The canvas owns a WebGL context, so the shell is only ever built once and
@@ -287,6 +300,29 @@ export class ArenaSelect {
       this.previewedTeamMode = this.config.teamMode;
       this.preview?.show(selected, this.config.teamMode === 'teams' ? ARENA_TEAMS[this.config.playerTeam].color : 0x2fb4ff);
     }
+    this.onChange?.(this.config);
+  }
+  // What the Game Setup shell shows in its footer. The garage is never blocked:
+  // every combination of chassis, crew shape and arena is legal.
+  brief() {
+    return { summary: this.summary(), ready: true, blocked: null, launchLabel: 'START ENGINES', note: `DRIVING THE ${autoById(this.config.autoId).name}` };
+  }
+  // ── the map step, handed to the Game Setup shell ─────────────────────────
+  get selectedMapId() { return this.config.mapId; }
+  setMap(id) { if (!ARENA_MAPS[id]) return; this.config.mapId = id; this.onChange?.(this.config); }
+  mapOptions() {
+    const drivers = this.config.driverCount;
+    return Object.values(ARENA_MAPS).map(map => ({
+      id: map.id, title: map.title, tag: map.tag, description: map.description,
+      icon: map.icon, accent: map.accent, art: null, warning: null,
+      meta: `${map.weather} · ${map.bounds * 2}M ACROSS`,
+      facts: [
+        { k: 'CONDITIONS', v: map.weather },
+        { k: 'ARENA SIZE', v: `${map.bounds * 2} × ${map.bounds * 2}M` },
+        { k: 'START PADS', v: `${map.spawns.ffa.length} DRIVERS` },
+        { k: 'ROLLING OUT', v: `${drivers} DRIVER${drivers > 1 ? 'S' : ''}` },
+      ],
+    }));
   }
   bindEvents() {
     this.root.querySelectorAll('[data-arena]').forEach(node => {

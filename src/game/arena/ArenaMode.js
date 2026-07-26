@@ -174,11 +174,40 @@ export class ArenaMode {
   }
 
   onDamage(target, amount, source, kind) {
+    this.showDamageNumber(target, amount, source, kind);
     if (target.hp > 0) {
       if (target.isPlayer) this.game.hud.damage?.();
       return;
     }
     this.killVehicle(target, source, kind);
+  }
+
+  // Project a world point onto the screen. Returns null behind the camera.
+  projectToScreen(x, y, z) {
+    if (!this.camera) return null;
+    if (!this._projectVec) this._projectVec = new THREE.Vector3();
+    const v = this._projectVec.set(x, y, z).project(this.camera);
+    if (v.z > 1) return null;
+    return { x: (v.x + 1) / 2 * innerWidth, y: (1 - v.y) / 2 * innerHeight };
+  }
+
+  // Floating damage numbers, exactly as the infantry modes do them: one per
+  // hit, coloured by who is on the receiving end. Everything that is not the
+  // infinite SMG is an Ultimate, and gets its own louder styling — a 130-point
+  // Orbital Ping should never read like a 7-point rifle tick.
+  showDamageNumber(target, amount, source, kind) {
+    if (!this.hud || !(amount > 0)) return;
+    const screen = this.projectToScreen(target.x, target.y + 2.6, target.z);
+    if (!screen) return;
+    const ultimate = kind !== 'bullet';
+    const style = target.isPlayer ? 'hurt-player'
+      : source?.isPlayer ? (ultimate ? 'hurt-ult' : 'hurt-enemy')
+      : this.friendlyToPlayer(target) ? 'hurt-ally' : 'hurt';
+    this.hud.damageNumber(screen.x, screen.y, String(Math.max(1, Math.round(amount))), ultimate ? `${style} ult` : style);
+  }
+
+  friendlyToPlayer(vehicle) {
+    return Boolean(this.player && vehicle.team !== null && vehicle.team === this.player.team);
   }
 
   damageStructure(piece, amount, point, source, kind) {

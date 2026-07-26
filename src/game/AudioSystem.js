@@ -66,7 +66,7 @@ export class AudioSystem {
       change_team: sound('change_team.wav', {}),
       change_texture: sound('change_texture.wav', {}),
       destructo_death: variants(['destructo_death.wav', 'destructo_death2.wav', 'destructo_death3.wav', 'destructo_death4.wav', 'destructo_death5.wav', 'destructo_death6.wav', 'destructo_death7.wav']),
-      destructo_explosion_death: sound('destructo_dies_from_explosion.wav'),
+      destructo_explosion_death: variants(['destructo_dies_from_explosion.wav', 'destructo_dies_from_explosion2.wav', 'destructo_dies_from_explosion3.wav', 'destructo_dies_from_explosion4.wav', 'destructo_dies_from_explosion5.wav']),
       destructo_damaged: sound('destructo_damaged.wav'),
       destructo_damaged_running: sound('destructo_damaged2.wav'),
       destructo_grunt: variants(['destructo_grunt.wav', 'destructo_grunt2.wav']),

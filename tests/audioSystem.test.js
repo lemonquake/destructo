@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 const mocks = vi.hoisted(() => ({
   instances: [],
@@ -134,6 +136,28 @@ describe('AudioSystem voice management', () => {
     expect(sources('tree_hit')).toEqual(['/sounds/tree_hit1.wav', '/sounds/tree_hit2.wav', '/sounds/tree_hit3.wav']);
     expect(sources('tree_explode')).toEqual(['/sounds/tree_explode.wav']);
     expect(sources('destructo_hit')).toEqual(['/sounds/destructo_hit1.wav', '/sounds/destructo_hit2.wav', '/sounds/destructo_hit3.wav']);
+  });
+
+  it('rotates five recorded screams when a Destructo is blown apart', () => {
+    const audio = new AudioSystem();
+    const sources = [audio.sounds.destructo_explosion_death].flat().map(clip => clip.options.src[0]);
+
+    expect(sources).toEqual([
+      '/sounds/destructo_dies_from_explosion.wav', '/sounds/destructo_dies_from_explosion2.wav',
+      '/sounds/destructo_dies_from_explosion3.wav', '/sounds/destructo_dies_from_explosion4.wav',
+      '/sounds/destructo_dies_from_explosion5.wav',
+    ]);
+  });
+
+  // A clip that only exists in dist/ is silently dropped on the next build, and
+  // the mixer plays nothing. Every registered source has to ship from public/.
+  it('ships every registered clip from public/, not just the build output', () => {
+    const audio = new AudioSystem();
+    const missing = Object.values(audio.sounds).flat()
+      .map(clip => clip.options.src[0])
+      .filter(src => !existsSync(resolve(`public${src}`)));
+
+    expect(missing).toEqual([]);
   });
 
   it('asks a suspended audio context to resume', () => {

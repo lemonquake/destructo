@@ -1396,3 +1396,406 @@ body.arena-mode,body.arena-mode canvas{cursor:none}
 .blitz-table tr.survived td{background:rgba(216,255,106,.07)}
 .blitz-table tr.is-player td{box-shadow:inset 0 0 0 1px rgba(158,255,138,.28)}
 .blitz-table small{display:block;color:#7f93b5;font:700 5.5px system-ui;letter-spacing:.1em}
+
+/* ══ GAME SETUP · one command desk for every mode ═════════════════════════ */
+/* Full-bleed console. `--mode` / `--mode2` are set from the mode registry and
+   drive every accent on the screen, so switching modes recolours the whole
+   frame without touching a single rule below. */
+.game-setup{position:fixed;inset:0;z-index:70;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;color:#eaf3ff;text-align:left;font-family:system-ui,sans-serif;background:radial-gradient(circle at 78% 8%,color-mix(in srgb,var(--mode) 16%,transparent),transparent 42%),radial-gradient(circle at 6% 92%,color-mix(in srgb,var(--mode2) 12%,transparent),transparent 46%),linear-gradient(165deg,#080d1a 0%,#0d1425 52%,#120e22 100%);transition:background .5s ease}
+.setup-aurora{position:absolute;inset:-45%;pointer-events:none;opacity:.65;background:conic-gradient(from 40deg,transparent,color-mix(in srgb,var(--mode) 22%,transparent),transparent 26%,color-mix(in srgb,var(--mode2) 16%,transparent),transparent 54%);animation:setup-aurora 26s linear infinite}
+@keyframes setup-aurora{to{transform:rotate(360deg)}}
+
+/* ── topbar ──────────────────────────────────────────────────────────────── */
+.setup-topbar{position:relative;z-index:3;min-height:64px;display:flex;align-items:center;gap:14px;padding:8px 18px;border-bottom:1px solid #1e2b45;background:rgba(6,11,22,.86);backdrop-filter:blur(16px)}
+.setup-topbar>*{flex-shrink:0}
+.setup-back{flex:none;width:40px;height:40px;border:1px solid #2b3c5c;border-radius:12px;background:#0e1830;color:#dff1ff;font:400 24px/1 system-ui;cursor:pointer;transition:.18s}
+.setup-back:hover{transform:translateX(-3px);border-color:var(--mode);color:#fff;box-shadow:0 0 20px color-mix(in srgb,var(--mode) 35%,transparent)}
+.setup-brand{display:flex;align-items:center;gap:10px}
+.setup-brand>span{display:grid;place-items:center;width:40px;height:40px;border-radius:12px;background:linear-gradient(135deg,var(--mode),var(--mode2));color:#0a0f1c;font:1000 15px Impact,sans-serif;transform:rotate(-3deg);box-shadow:0 0 24px color-mix(in srgb,var(--mode) 30%,transparent);transition:background .4s ease}
+.setup-brand div{display:flex;flex-direction:column;line-height:.95}
+.setup-brand small{font:800 8px system-ui;letter-spacing:.34em;color:#6f88ab}
+.setup-brand strong{font:900 19px Impact,system-ui;letter-spacing:.1em;color:#fff}
+.setup-crumbs{display:flex;align-items:center;gap:6px;margin-left:8px}
+.setup-crumbs i{padding:5px 10px;border:1px solid #24334e;border-radius:20px;color:#65799a;font:900 8px system-ui;font-style:normal;letter-spacing:.16em;white-space:nowrap}
+.setup-crumbs i.done{border-color:#2c4666;color:#8fb2d6}
+.setup-crumbs i.on{border-color:var(--mode);color:#fff;background:color-mix(in srgb,var(--mode) 18%,transparent);box-shadow:0 0 16px color-mix(in srgb,var(--mode) 26%,transparent)}
+.setup-wallet{display:flex;gap:7px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.setup-wallet .meta-chip{padding:6px 11px;font-size:10px}
+
+/* ── shell: mode rail + mode body ────────────────────────────────────────── */
+.setup-shell{position:relative;z-index:2;display:grid;grid-template-columns:264px minmax(0,1fr);min-height:0}
+.setup-rail{display:flex;flex-direction:column;min-height:0;border-right:1px solid #1c2942;background:linear-gradient(180deg,rgba(8,13,26,.9),rgba(9,15,30,.72))}
+.rail-head{padding:14px 16px 10px;border-bottom:1px solid #18243b}
+.rail-head .eyebrow{display:block;color:var(--mode);font:900 8px system-ui;letter-spacing:.24em;transition:color .4s ease}
+.rail-head strong{font:900 16px Impact,system-ui;letter-spacing:.07em;color:#fff}
+.rail-scroll{flex:1;min-height:0;overflow-y:auto;padding:10px 12px 14px;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin}
+.rail-group{display:flex;flex-direction:column;gap:7px}
+.rail-group>header{display:flex;flex-direction:column;padding:0 3px}
+.rail-group>header span{color:#7f93b5;font:900 8px system-ui;letter-spacing:.2em}
+.rail-group>header small{color:#4c5f80;font:700 8px system-ui;letter-spacing:.05em}
+.rail-mode{position:relative;display:grid;grid-template-columns:36px minmax(0,1fr);grid-template-rows:auto auto;column-gap:10px;align-items:center;padding:10px 11px;border:2px solid #22304b;border-radius:13px;background:linear-gradient(150deg,rgba(13,21,40,.92),rgba(8,13,26,.92));color:#9db1cf;font-family:inherit;text-align:left;cursor:pointer;overflow:hidden;transition:transform .16s,border-color .16s,box-shadow .16s,color .16s}
+.rail-mode:hover{transform:translateX(3px);border-color:color-mix(in srgb,var(--mode) 65%,#22304b);color:#fff}
+.rail-mode.selected{border-color:var(--mode);color:#fff;background:linear-gradient(120deg,color-mix(in srgb,var(--mode) 24%,#0b1220),rgba(8,13,26,.95));box-shadow:0 0 22px color-mix(in srgb,var(--mode) 26%,transparent),inset 3px 0 var(--mode)}
+.rail-mode.selected::after{content:"";position:absolute;right:9px;top:11px;width:7px;height:7px;border-radius:50%;background:var(--mode);box-shadow:0 0 10px var(--mode);animation:rail-live 1.3s ease-in-out infinite}
+@keyframes rail-live{50%{opacity:.35;transform:scale(.7)}}
+.rail-icon{grid-row:1/3;display:grid;place-items:center;width:36px;height:36px;border-radius:11px;background:rgba(255,255,255,.05);border:1px solid #26344f;font-size:19px}
+.rail-mode.selected .rail-icon{background:color-mix(in srgb,var(--mode) 22%,transparent);border-color:color-mix(in srgb,var(--mode) 55%,transparent)}
+.rail-copy{display:flex;flex-direction:column;min-width:0}
+.rail-copy strong{font:900 13px/1.1 Impact,system-ui;letter-spacing:.06em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-copy small{color:#7186a8;font:800 7px system-ui;letter-spacing:.13em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rail-mode.selected .rail-copy small{color:color-mix(in srgb,var(--mode) 72%,#fff)}
+.rail-lobby{grid-column:2;margin-top:3px;color:#5d7093;font:900 7px system-ui;font-style:normal;letter-spacing:.14em}
+.rail-mode.selected .rail-lobby{color:#a8bdd8}
+.rail-foot{padding:11px 14px;border-top:1px solid #18243b;color:#54688a;font:700 8px/1.55 system-ui;letter-spacing:.04em}
+
+/* Flex children shrink by default even inside a scroll container, which would
+   crush the mode banner into a sliver behind the panel. Nothing in here shrinks. */
+.setup-main{min-height:0;overflow-y:auto;overflow-x:hidden;padding:16px 20px 22px;display:flex;flex-direction:column;gap:14px;scrollbar-width:thin}
+.setup-main>*{flex-shrink:0}
+
+/* ── mode banner ─────────────────────────────────────────────────────────── */
+.setup-hero{position:relative;display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px;align-items:center;padding:16px 20px;border:1px solid color-mix(in srgb,var(--mode) 38%,#1e2b45);border-radius:20px;overflow:hidden;background:linear-gradient(115deg,color-mix(in srgb,var(--mode) 15%,rgba(9,15,30,.92)),rgba(9,15,30,.92) 58%,color-mix(in srgb,var(--mode2) 12%,rgba(9,15,30,.92)));box-shadow:0 0 40px color-mix(in srgb,var(--mode) 12%,transparent)}
+.setup-hero.swap{animation:hero-swap .45s cubic-bezier(.2,.9,.3,1.05)}
+@keyframes hero-swap{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:none}}
+.hero-mark{display:grid;place-items:center;width:74px;height:74px;border-radius:20px;border:2px solid color-mix(in srgb,var(--mode) 60%,transparent);background:radial-gradient(circle at 34% 28%,color-mix(in srgb,var(--mode) 34%,transparent),rgba(6,11,22,.9));font-size:36px;box-shadow:0 0 30px color-mix(in srgb,var(--mode) 26%,transparent)}
+.hero-copy{min-width:0}
+.hero-copy .eyebrow{display:block;color:var(--mode);font:900 9px system-ui;letter-spacing:.24em}
+.hero-copy h2{margin:2px 0 5px;font:900 clamp(28px,3.6vw,46px)/.92 Impact,system-ui;letter-spacing:.05em;color:#fff;text-shadow:0 3px 0 rgba(4,8,18,.55)}
+.hero-copy p{margin:0 0 9px;max-width:74ch;color:#9db1cf;font:600 11px/1.5 system-ui}
+.hero-tags{display:flex;flex-wrap:wrap;gap:5px}
+.hero-tags i{padding:4px 9px;border:1px solid #2a3a58;border-radius:20px;background:rgba(255,255,255,.03);color:#8fa6c6;font:900 7px system-ui;font-style:normal;letter-spacing:.14em}
+.hero-facts{display:grid;grid-template-columns:repeat(2,minmax(118px,1fr));gap:7px}
+.hero-fact{display:flex;flex-direction:column;gap:2px;padding:8px 11px;border:1px solid #26344f;border-radius:11px;background:rgba(6,11,22,.6)}
+.hero-fact span{color:#6c81a4;font:900 7px system-ui;letter-spacing:.18em}
+.hero-fact strong{color:#fff;font:900 11px system-ui;letter-spacing:.04em}
+
+/* ── panel body ──────────────────────────────────────────────────────────── */
+.setup-body{display:flex;flex-direction:column;gap:14px}
+.setup-body>*{flex-shrink:0}
+.setup-panel{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:14px;align-items:start}
+.setup-block{padding:14px 15px;border:1px solid #1f2c46;border-radius:18px;background:linear-gradient(160deg,rgba(11,18,34,.82),rgba(8,13,26,.72));box-shadow:inset 0 1px rgba(255,255,255,.05)}
+.setup-block-head{display:flex;align-items:baseline;justify-content:space-between;gap:10px;margin-bottom:11px;padding-bottom:9px;border-bottom:1px solid #1c2942}
+.setup-block-head .eyebrow{color:var(--mode);font:900 8px system-ui;letter-spacing:.22em}
+.setup-block-head .eyebrow b{color:#fff}
+.setup-block-head strong{font:900 13px Impact,system-ui;letter-spacing:.09em;color:#fff}
+.map-block .map-grid{grid-template-columns:repeat(4,1fr)}
+
+/* the roster board fills its column instead of scrolling in a small window */
+.setup-panel .setup-list{display:block;max-height:none;overflow:visible;padding:0}
+.setup-panel .preset-strip{grid-template-columns:repeat(auto-fit,minmax(126px,1fr));margin-bottom:9px}
+.setup-panel .roster-actions{margin-top:11px}
+
+/* rules desk: one column of chip rows so it reads top-to-bottom */
+.arena-rules.stacked{grid-template-columns:1fr;gap:11px;border:0;padding:0;background:none}
+.arena-rules.stacked .arena-rule-block.wide{grid-column:auto}
+/* A flex row leaves orphans — "5" or "240" stranded alone on a second line.
+   A grid distributes every chip evenly across however many rows it needs. */
+.arena-rules.stacked .arena-chip-row.wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(62px,1fr));gap:5px}
+.arena-rules.stacked .arena-chip{min-width:0}
+.arena-rules.stacked .arena-chip strong{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.setup-panel .preset-strip .btn{padding:8px 10px;font-size:12px;border-radius:10px}
+.rule-locked{display:flex;flex-wrap:wrap;gap:5px}
+.rule-locked.column{flex-direction:column;gap:6px}
+.rule-locked span{padding:6px 10px;border:1px dashed #33456a;border-radius:9px;color:#7a8fb0;font:800 8px system-ui;letter-spacing:.1em}
+.squad-slots{display:grid;gap:6px}
+.squad-slot{display:grid;grid-template-columns:24px minmax(0,1fr);gap:4px 9px;align-items:center;padding:7px 9px;border:1px solid #26334f;border-radius:11px;background:rgba(9,16,32,.7)}
+.squad-slot.locked{opacity:.6}
+.slot-index{grid-row:1/3;display:grid;place-items:center;width:24px;height:24px;border-radius:8px;background:color-mix(in srgb,var(--mode) 26%,#101a33);color:#fff;font:900 11px system-ui}
+.squad-slot select{width:100%;min-width:0;padding:5px 7px;border:1px solid #33456a;border-radius:7px;background:#0c1428;color:#fff;font:800 10px system-ui;letter-spacing:.06em;cursor:pointer}
+.squad-slot select:focus{outline:none;border-color:var(--mode);box-shadow:0 0 0 2px color-mix(in srgb,var(--mode) 25%,transparent)}
+.squad-slot em{grid-column:2;color:#7a8fb0;font:800 7px system-ui;font-style:normal;letter-spacing:.1em}
+
+/* the light-mode control strip needs a console skin in here */
+.game-setup .control-status{margin:0 0 10px;border-color:#2a3a58;background:rgba(9,16,32,.72);color:#a8bad6}
+.game-setup .control-status strong{color:#fff}
+.game-setup .control-status.observer{border-color:var(--purple);background:rgba(160,107,255,.1);color:#d3c2ff;box-shadow:inset 4px 0 var(--purple)}
+.game-setup .supply-plan{margin-top:11px}
+
+/* campaign briefing */
+.campaign-progress{height:8px;margin-bottom:12px;border-radius:6px;background:#101a33;border:1px solid #26344f;overflow:hidden}
+.campaign-progress i{display:block;height:100%;background:linear-gradient(90deg,var(--mode),var(--mode2));box-shadow:0 0 14px color-mix(in srgb,var(--mode) 55%,transparent)}
+.campaign-tiles{display:grid;gap:8px}
+.campaign-tile{position:relative;display:grid;grid-template-columns:44px minmax(0,1fr);gap:11px;align-items:center;padding:11px 13px;border:1px solid color-mix(in srgb,var(--dim) 32%,#22304b);border-radius:14px;background:linear-gradient(120deg,color-mix(in srgb,var(--dim) 11%,rgba(9,16,32,.8)),rgba(8,13,26,.8))}
+.campaign-tile b{display:grid;place-items:center;width:44px;height:44px;border-radius:13px;border:1px solid color-mix(in srgb,var(--dim) 45%,transparent);background:rgba(6,11,22,.7);font-size:22px}
+.campaign-tile .eyebrow{display:block;color:var(--dim);font:900 7px system-ui;letter-spacing:.2em}
+.campaign-tile strong{display:block;margin:2px 0 3px;font:900 14px Impact,system-ui;letter-spacing:.06em;color:#fff}
+.campaign-tile p{margin:0;max-width:62ch;color:#8ba0c0;font:600 9px/1.45 system-ui}
+.campaign-tile em{position:absolute;right:12px;top:11px;color:var(--dim);font:900 8px system-ui;font-style:normal;letter-spacing:.12em}
+
+/* ── the garage and the lattice lobby, mounted as panels ─────────────────── */
+.arena-select.embedded{width:auto;max-width:none;max-height:none;margin:0;padding:0;border:0;border-radius:0;background:none;box-shadow:none;overflow:visible;color:inherit;gap:14px}
+.arena-select.embedded .arena-select-body{grid-template-columns:minmax(330px,1fr) minmax(420px,1.2fr)}
+.arena-select.embedded .arena-map-strip{margin-top:2px}
+
+/* ── footer: the brief, the verdict, the launch ──────────────────────────── */
+.setup-footer{position:relative;z-index:3;display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:12px;align-items:center;padding:11px 18px;border-top:1px solid #1e2b45;background:rgba(6,11,22,.9);backdrop-filter:blur(16px)}
+.setup-readout{display:flex;flex-direction:column;gap:2px;min-width:0}
+.setup-readout .eyebrow{color:var(--mode);font:900 8px system-ui;letter-spacing:.2em}
+.setup-readout strong{font:900 13px Impact,system-ui;letter-spacing:.07em;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.setup-verdict{padding:9px 13px;border:1px solid;border-radius:10px;font:900 9px system-ui;letter-spacing:.1em;white-space:nowrap}
+.setup-verdict.ready{color:#7dffa6;border-color:#2f7a4c;background:rgba(45,202,98,.12)}
+.setup-verdict.blocked{color:#ff8f9c;border-color:#7a2f3c;background:rgba(255,80,98,.12)}
+.game-setup .btn{border-width:2px;border-color:#2b3c5c;border-radius:12px;padding:11px 20px;background:#101a33;color:#cfe0f7;font-size:14px;box-shadow:none;letter-spacing:.08em}
+.game-setup .btn:hover:not(:disabled){transform:translateY(-2px);border-color:var(--mode);background:#16233f;color:#fff;box-shadow:0 0 20px color-mix(in srgb,var(--mode) 26%,transparent)}
+.game-setup .btn.primary{border-color:var(--mode);background:linear-gradient(120deg,var(--mode),var(--mode2));color:#0a0f1c;-webkit-text-stroke:0;font-size:16px;box-shadow:0 0 26px color-mix(in srgb,var(--mode) 34%,transparent)}
+.game-setup .btn.primary:hover:not(:disabled){filter:brightness(1.12);color:#0a0f1c}
+.game-setup .btn:disabled{opacity:.4}
+.game-setup .btn.tiny{padding:7px 11px;font-size:11px}
+
+/* ── responsive ──────────────────────────────────────────────────────────── */
+@media(max-width:1280px){
+  .setup-panel{grid-template-columns:minmax(0,1fr) 300px}
+  .map-block .map-grid{grid-template-columns:repeat(2,1fr)}
+  .arena-select.embedded .arena-select-body{grid-template-columns:1fr}
+}
+@media(max-width:1080px){
+  .setup-shell{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .setup-rail{border-right:0;border-bottom:1px solid #1c2942}
+  .rail-scroll{flex-direction:row;overflow-x:auto;overflow-y:hidden;padding:10px 12px}
+  .rail-group{flex-direction:row;align-items:center;gap:7px}
+  .rail-group>header{display:none}
+  .rail-mode{min-width:210px}
+  .rail-foot{display:none}
+  .setup-hero{grid-template-columns:auto minmax(0,1fr)}
+  .hero-facts{grid-column:1/-1;grid-template-columns:repeat(4,minmax(0,1fr))}
+  .setup-panel{grid-template-columns:1fr}
+}
+@media(max-width:820px){
+  .game-setup{grid-template-rows:56px minmax(0,1fr) auto}
+  .setup-crumbs,.setup-wallet{display:none}
+  .setup-main{padding:12px}
+  .hero-mark{width:56px;height:56px;font-size:27px}
+  .hero-facts{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .setup-footer{grid-template-columns:1fr 1fr;padding:10px 12px}
+  .setup-readout,.setup-verdict{grid-column:1/-1}
+  .map-block .map-grid{grid-template-columns:1fr}
+}
+/* Short, wide windows: the banner gives up its facts strip and shrinks rather
+   than eating the half of the screen the actual setup controls need. */
+@media(max-height:760px){
+  .setup-hero{gap:14px;padding:11px 16px}
+  .hero-mark{width:52px;height:52px;border-radius:15px;font-size:26px}
+  .hero-copy h2{font-size:clamp(22px,2.6vw,32px)}
+  .hero-copy p{display:none}
+  .hero-facts{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .hero-fact{padding:6px 9px}
+  .setup-main{padding:12px 16px 16px;gap:11px}
+}
+@media(max-height:600px){
+  .hero-tags,.hero-facts{display:none}
+  .setup-topbar{min-height:52px}
+}
+@media(prefers-reduced-motion:reduce){
+  .setup-aurora,.rail-mode.selected::after{animation:none}
+  .setup-hero.swap{animation-duration:.001ms}
+}
+
+/* ══ GAME SETUP · readability pass ════════════════════════════════════════ */
+/* The panels were authored as dense boxed screens with 6–8px labels. Inside a
+   full-bleed console there is room to breathe, so every label, value and blurb
+   is raised to something a person can actually read at arm's length. Scoped to
+   .game-setup so the standalone screens keep their own scale. */
+.game-setup{font-size:14px}
+
+/* topbar */
+.game-setup .setup-brand small{font-size:10px;letter-spacing:.26em}
+.game-setup .setup-brand strong{font-size:23px}
+.game-setup .setup-crumbs i{font-size:11px;padding:7px 13px;letter-spacing:.1em}
+.game-setup .setup-wallet .meta-chip{font-size:13px;padding:8px 14px;letter-spacing:.05em}
+
+/* mode rail */
+.game-setup .rail-head .eyebrow{font-size:11px;letter-spacing:.16em}
+.game-setup .rail-head strong{font-size:20px}
+.game-setup .rail-group>header span{font-size:12px;letter-spacing:.14em}
+.game-setup .rail-group>header small{font-size:11px;letter-spacing:.02em}
+.game-setup .rail-mode{grid-template-columns:42px minmax(0,1fr);padding:12px}
+.game-setup .rail-icon{width:42px;height:42px;font-size:23px}
+.game-setup .rail-copy strong{font-size:17px;letter-spacing:.04em}
+.game-setup .rail-copy small{font-size:11px;letter-spacing:.07em}
+.game-setup .rail-lobby{font-size:11px;letter-spacing:.08em}
+.game-setup .rail-foot{font-size:12px;line-height:1.5}
+.game-setup .setup-shell{grid-template-columns:300px minmax(0,1fr)}
+
+/* mode banner */
+.game-setup .hero-copy .eyebrow{font-size:12px;letter-spacing:.18em}
+.game-setup .hero-copy p{font-size:14px;line-height:1.5;max-width:82ch}
+.game-setup .hero-tags i{font-size:11px;padding:6px 12px;letter-spacing:.09em}
+.game-setup .hero-fact{padding:9px 13px}
+.game-setup .hero-fact span{font-size:11px;letter-spacing:.12em}
+.game-setup .hero-fact strong{font-size:14px;letter-spacing:.02em}
+
+/* block headers */
+.game-setup .setup-block-head .eyebrow{font-size:12px;letter-spacing:.16em}
+.game-setup .setup-block-head strong{font-size:17px;letter-spacing:.07em}
+
+/* roster board */
+.game-setup .control-status strong{font-size:13px;letter-spacing:.05em}
+.game-setup .control-status span{font-size:12px}
+.game-setup .alliance-head strong{font-size:20px}
+.game-setup .alliance-head small{font-size:12px;letter-spacing:.06em}
+.game-setup .ffa-banner strong{font-size:20px;color:#d3c2ff}
+.game-setup .ffa-banner span{font-size:12px;color:#a8bad6}
+.game-setup .team-card .team-name{font-size:17px}
+.game-setup .role-switch span{font-size:15px}
+.game-setup .role-switch small{font-size:10px;letter-spacing:.09em}
+.game-setup .aura-btn span{font-size:13px}
+.game-setup .uniform-preview span{font-size:12px}
+.game-setup .ally-move span{font-size:13px;letter-spacing:.08em}
+.game-setup .ally-arrow{font-size:14px;height:34px}
+.game-setup .setup-panel .preset-strip .btn{font-size:14px;padding:11px 12px}
+.game-setup .roster-actions .btn{font-size:14px}
+
+/* rules desk */
+.game-setup .arena-rule-block .eyebrow{font-size:12px;letter-spacing:.14em}
+.game-setup .arena-chip{padding:9px 11px}
+.game-setup .arena-chip strong{font-size:13px;letter-spacing:.03em}
+.game-setup .arena-chip small{font-size:10px;line-height:1.35;letter-spacing:.03em}
+.game-setup .arena-rules.stacked .arena-chip-row.wrap{grid-template-columns:repeat(auto-fit,minmax(84px,1fr))}
+.game-setup .slot-index{width:28px;height:28px;font-size:14px}
+.game-setup .squad-slot{grid-template-columns:28px minmax(0,1fr)}
+.game-setup .squad-slot select{font-size:13px;padding:7px 9px;letter-spacing:.03em}
+.game-setup .squad-slot em{font-size:11px;letter-spacing:.04em}
+.game-setup .rule-locked span{font-size:12px;letter-spacing:.06em}
+.game-setup .supply-plan{font-size:13px}
+.game-setup .supply-plan strong{font-size:18px}
+
+/* maps */
+.game-setup .map-card{min-height:206px;padding:74px 15px 14px}
+.game-setup .map-card::before{height:70px}
+.game-setup .map-card .map-icon{font-size:32px}
+.game-setup .map-card small{font-size:11px;letter-spacing:.1em}
+.game-setup .map-card strong{font-size:18px;margin:5px 0 6px}
+.game-setup .map-card p{font-size:12px;line-height:1.4}
+.game-setup .map-card em{font-size:10px;letter-spacing:.08em;position:static;margin-top:7px}
+
+/* garage: chassis spec, roster cards, arena cards */
+.game-setup .arena-spec .auto-role{font-size:11px;letter-spacing:.16em}
+.game-setup .arena-spec h3{font-size:30px}
+.game-setup .arena-spec p{font-size:13px;line-height:1.45}
+.game-setup .arena-stat-grid{gap:8px 16px}
+.game-setup .arena-stat-grid label{font-size:11px;letter-spacing:.1em}
+.game-setup .bar-track{height:9px}
+.game-setup .loadout-row{padding:10px 12px;gap:6px 11px}
+.game-setup .loadout-tag{font-size:10px;padding:6px 9px;letter-spacing:.07em}
+.game-setup .loadout-row strong{font-size:16px}
+.game-setup .loadout-row small{font-size:12px;line-height:1.45}
+.game-setup .loadout-row em{font-size:11px;letter-spacing:.08em}
+.game-setup .arena-roster-head .eyebrow{font-size:12px;letter-spacing:.16em}
+.game-setup .arena-roster-head strong{font-size:19px}
+.game-setup .auto-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:8px}
+.game-setup .auto-card{padding:11px 7px;gap:3px}
+.game-setup .auto-card .auto-icon{font-size:25px}
+.game-setup .auto-card strong{font-size:12px;line-height:1.15}
+.game-setup .auto-card small{font-size:9px;letter-spacing:.09em}
+.game-setup .auto-card em{font-size:9px;line-height:1.25;letter-spacing:.04em}
+.game-setup .arena-map-strip .eyebrow{font-size:12px;letter-spacing:.16em}
+.game-setup .arena-map-card{padding:12px 14px;gap:3px}
+.game-setup .arena-map-icon{font-size:24px}
+.game-setup .arena-map-card small{font-size:11px;letter-spacing:.11em}
+.game-setup .arena-map-card strong{font-size:18px}
+.game-setup .arena-map-card p{font-size:12px;line-height:1.4;max-height:none}
+.game-setup .arena-map-card em{font-size:10px;letter-spacing:.09em}
+.game-setup .arena-step{width:32px;height:32px;font-size:18px}
+
+/* lattice lobby */
+.game-setup .blitz-lobby-head .eyebrow{font-size:12px;letter-spacing:.14em}
+.game-setup .blitz-seat{grid-template-columns:34px 1fr auto;gap:9px;padding:9px 11px}
+.game-setup .blitz-seat-color{width:32px;height:32px}
+.game-setup .blitz-seat-dot{width:18px;height:18px}
+.game-setup .blitz-seat-id strong{font-size:13px;letter-spacing:.06em}
+.game-setup .blitz-seat-id small{font-size:11px;letter-spacing:.07em}
+.game-setup .blitz-seat-crew{font-size:11px;padding:6px 10px}
+.game-setup .blitz-obstacle{padding:5px 9px;font-size:12px}
+.game-setup .blitz-obstacle i{width:11px;height:11px}
+.game-setup .blitz-obstacle small{font-size:10px;letter-spacing:.05em}
+.game-setup .blitz-powerup{padding:7px 12px 7px 7px;font-size:13px}
+.game-setup .blitz-powerup-icon{width:34px;height:34px;flex-basis:34px}
+.game-setup .blitz-powerup small{font-size:11px;line-height:1.35}
+.game-setup .blitz-powerups .eyebrow{font-size:12px;letter-spacing:.14em}
+
+/* campaign */
+.game-setup .campaign-tile b{width:50px;height:50px;font-size:25px}
+.game-setup .campaign-tile{grid-template-columns:50px minmax(0,1fr)}
+.game-setup .campaign-tile .eyebrow{font-size:11px;letter-spacing:.13em}
+.game-setup .campaign-tile strong{font-size:18px}
+.game-setup .campaign-tile p{font-size:12px;line-height:1.45}
+.game-setup .campaign-tile em{font-size:11px;letter-spacing:.09em}
+
+/* footer */
+.game-setup .setup-readout .eyebrow{font-size:12px;letter-spacing:.14em}
+.game-setup .setup-readout strong{font-size:17px;letter-spacing:.05em}
+.game-setup .setup-verdict{font-size:12px;padding:10px 15px;letter-spacing:.06em}
+.game-setup .btn{font-size:15px}
+.game-setup .btn.primary{font-size:17px}
+
+/* narrower screens: keep the bumped sizes but let the rail shrink back */
+@media(max-width:1440px){
+  .game-setup .setup-shell{grid-template-columns:272px minmax(0,1fr)}
+  .game-setup .auto-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+}
+@media(max-width:1080px){
+  .game-setup .setup-shell{grid-template-columns:1fr}
+}
+/* Catch-all so no eyebrow label anywhere in the console drops below 11px. */
+.game-setup .eyebrow{font-size:11px;letter-spacing:.14em}
+.game-setup .arena-summary{font-size:13px;letter-spacing:.08em}
+
+/* ── Destruct-Auto floating damage numbers ───────────────────────────────── */
+/* The arena HUD owns its own layer so it never contends with #damage-numbers,
+   but it reuses the .dmg vocabulary so a hit reads identically in both modes. */
+.arena-damage-numbers{position:fixed;inset:0;pointer-events:none;z-index:13}
+/* Ultimates hit for 34–130. They get a hotter colour and more weight so a
+   Siege Mortar shell never reads like an SMG tick. */
+.dmg.ult{font-size:31px;color:#ffb02e;-webkit-text-stroke:1.5px #2b1206;text-shadow:0 0 14px rgba(255,140,40,.75)}
+.dmg.hurt-ult{color:#ffd23f}
+.dmg.hurt-player.ult{font-size:35px;color:#ff6a4d;-webkit-text-stroke:1.5px #2a0a06;text-shadow:0 0 16px rgba(255,70,50,.8)}
+
+/* ══ GAME SETUP · step 3, the battlefield picker ══════════════════════════ */
+/* One screen shared by every mode: a big showcase of whatever is selected, with
+   the alternatives underneath. Deathmatch maps bring painted art, Crate Blitz
+   lattices paint their own board, arenas fall back to a tinted icon plate. */
+.game-setup .setup-crumbs{gap:5px}
+.game-setup .setup-crumbs b,.game-setup .setup-crumbs button{padding:7px 13px;border:1px solid #24334e;border-radius:20px;background:none;color:#65799a;font:900 11px system-ui;letter-spacing:.1em;white-space:nowrap;cursor:pointer;transition:.16s}
+.game-setup .setup-crumbs b{cursor:default}
+.game-setup .setup-crumbs .done{border-color:#2c4666;color:#8fb2d6}
+.game-setup .setup-crumbs .on{border-color:var(--mode);color:#fff;background:color-mix(in srgb,var(--mode) 18%,transparent);box-shadow:0 0 16px color-mix(in srgb,var(--mode) 26%,transparent)}
+.game-setup .setup-crumbs button:hover:not(:disabled):not(.on){border-color:var(--mode);color:#fff}
+.game-setup .setup-crumbs button:disabled{opacity:.35;cursor:default}
+
+.map-step{display:flex;flex-direction:column;gap:14px}
+.map-showcase{display:grid;grid-template-columns:minmax(280px,0.85fr) minmax(0,1.15fr);gap:18px;padding:16px;border:1px solid color-mix(in srgb,var(--map-accent) 40%,#1f2c46);border-radius:18px;background:linear-gradient(115deg,color-mix(in srgb,var(--map-accent) 13%,rgba(9,15,30,.92)),rgba(9,15,30,.92) 65%);box-shadow:0 0 40px color-mix(in srgb,var(--map-accent) 14%,transparent)}
+.map-showcase-art{position:relative;min-height:210px;border-radius:14px;overflow:hidden;border:1px solid color-mix(in srgb,var(--map-accent) 45%,#24314c);background:#0a1122}
+.map-showcase-art .map-art{position:absolute;inset:0;background-size:cover;background-position:center;filter:saturate(1.15)}
+.map-showcase-art .map-art.blank{background:radial-gradient(circle at 40% 35%,color-mix(in srgb,var(--map-accent) 34%,transparent),#0a1122 70%)}
+.map-showcase-art .map-art-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;background:#0a1122}
+.map-showcase-icon{position:absolute;left:14px;top:12px;font-size:44px;filter:drop-shadow(0 4px 6px rgba(0,0,0,.85))}
+.map-showcase-copy{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.map-showcase-copy .eyebrow{color:var(--map-accent);font-size:12px;letter-spacing:.18em}
+.map-showcase-copy h3{margin:4px 0 8px;font:900 clamp(24px,2.9vw,38px)/.95 Impact,system-ui;letter-spacing:.04em;color:#fff}
+.map-showcase-copy p{margin:0 0 12px;max-width:78ch;color:#9db1cf;font:600 14px/1.5 system-ui}
+.map-warning{margin-bottom:12px;padding:9px 13px;border:1px solid #7a2f3c;border-radius:10px;background:rgba(255,80,98,.12);color:#ff8f9c;font:900 12px system-ui;letter-spacing:.06em}
+.map-showcase-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:8px}
+
+.map-choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.map-choice{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;align-items:center;padding:10px;border:2px solid #24314c;border-radius:14px;background:linear-gradient(160deg,rgba(12,20,38,.9),rgba(8,13,26,.9));color:#a8bad6;font-family:system-ui,sans-serif;text-align:left;cursor:pointer;transition:transform .16s,border-color .16s,box-shadow .16s}
+.map-choice:hover{transform:translateY(-3px);border-color:var(--map-accent);color:#fff}
+.map-choice.selected{border-color:var(--map-accent);color:#fff;box-shadow:0 0 22px color-mix(in srgb,var(--map-accent) 34%,transparent),inset 3px 0 var(--map-accent)}
+.map-choice.warned{border-style:dashed;border-color:#7a2f3c}
+.map-choice-art{position:relative;height:70px;border-radius:10px;overflow:hidden;border:1px solid color-mix(in srgb,var(--map-accent) 40%,#24314c);background:#0a1122}
+.map-choice-art .map-art{position:absolute;inset:0;background-size:cover;background-position:center}
+.map-choice-art .map-art.blank{background:radial-gradient(circle at 45% 40%,color-mix(in srgb,var(--map-accent) 36%,transparent),#0a1122 72%)}
+.map-choice-art .map-art-canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.map-choice-art i{position:absolute;left:6px;top:4px;font-size:22px;font-style:normal;filter:drop-shadow(0 3px 4px rgba(0,0,0,.9))}
+.map-choice-copy{display:flex;flex-direction:column;gap:2px;min-width:0}
+.map-choice-copy small{color:var(--map-accent);font:900 10px system-ui;letter-spacing:.12em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.map-choice-copy strong{font:900 17px/1.05 Impact,system-ui;letter-spacing:.04em}
+.map-choice-copy em{color:#7f93b5;font:800 10px system-ui;font-style:normal;letter-spacing:.07em}
+.map-choice-copy u{margin-top:3px;color:#ff8f9c;font:900 10px system-ui;text-decoration:none;letter-spacing:.06em}
+
+@media(max-width:1080px){
+  .map-showcase{grid-template-columns:1fr}
+  .map-showcase-art{min-height:170px}
+}
+@media(max-width:820px){
+  .map-choices{grid-template-columns:1fr}
+}
