@@ -25,13 +25,17 @@ import { stepJumpState } from './JumpSystem.js';
 import { Marketplace } from './Marketplace.js';
 import { Casino } from './Casino.js';
 import { openPayPalCheckout } from './PayPalCheckout.js';
+import { ArenaSelect, DEFAULT_ARENA_CONFIG } from './arena/ArenaSelect.js';
+import { ArenaMode } from './arena/ArenaMode.js';
+import { BlitzSelect, DEFAULT_BLITZ_CONFIG } from './blitz/BlitzSelect.js';
+import { BlitzMode } from './blitz/BlitzMode.js';
 
 const pick = list => list[Math.floor(Math.random() * list.length)];
 const hex = c => `#${c.toString(16).padStart(6, '0')}`;
 const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
 const SETUP_DEFAULTS = Object.freeze({ squadSize: 3, startingClasses: Object.freeze(['scout', 'scout', 'medic', 'gunner', 'commando']), startingAmmo: 90, aiDifficulty: 'regular', matchMinutes: 5, maxScore: 100, reinforcements: true, reinforcementSeconds: 15, dominationRespawnSeconds: 3 });
 // Screens that play over the live 3D menu diorama instead of a battle scene.
-const MENU_BACKDROP_STATES = new Set(['menu', 'setup', 'missions', 'leaderboard', 'results']);
+const MENU_BACKDROP_STATES = new Set(['menu', 'setup', 'missions', 'leaderboard', 'results', 'arena-select', 'arena-results', 'blitz-select', 'blitz-results']);
 const freshMatchSetup = overrides => ({ ...SETUP_DEFAULTS, startingClasses: [...SETUP_DEFAULTS.startingClasses], ...overrides });
 const DOMINATION_RULES = Object.freeze({ squadSize: 4, reinforcementSeconds: 3, classId: 'commando', weaponId: 'rifle' });
 // heal tether: max wire length before the green wires snap, heal + drain rates
@@ -61,7 +65,7 @@ export function unitRenderLod(distanceSquared,quality=1){const near=quality<.45?
 export class Game{
   constructor(mount){this.mount=mount;this.screen=document.querySelector('#screen');this.save=new SaveSystem();this.debugMode=Boolean(this.save.data.debugMode);this.league=new LeagueSystem(this.save.data.aiProfiles);this.input=new Input(mount);this.hud=new HUD();this.minimap=new Minimap(document.querySelector('#minimap'),p=>this.scoutFromMinimap(p));this.observerMinimap=new Minimap(document.querySelector('#observer-minimap'),p=>this.observerMapCommand(p));this.audio=new AudioSystem(this.save.data.settings.volume);this.audio.setMusicMuted(this.save.data.settings.musicMuted);this.audio.setSoundsMuted(this.save.data.settings.soundsMuted);this.lastFrame=performance.now()/1000;this.state='menu';this.running=false;this.entities=[];this.combatants=[];this.kills=0;this.elapsed=0;this.lockTarget=null;this.hoverEntity=null;this.setup=defaultTeamSetup(4);this.matchSetup=freshMatchSetup();this.selectedMode='deathmatch';this.selectedMap=DEFAULT_MAP_ID;this.selectedDimensionIndex=0;this.teamStats={};this.aiBehaviorIndex=0;this.paypalModalActive=false;this.bindUI()}
   boot(){this.setupRenderer();this.showMenu();this.loop()}
-  setupRenderer(){this.renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',stencil:false});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.35));this.renderer.setSize(innerWidth,innerHeight);this.renderer.shadowMap.enabled=this.save.data.settings.shadows;this.renderer.shadowMap.type=THREE.PCFShadowMap;this.renderer.shadowMap.autoUpdate=false;this.renderer.shadowMap.needsUpdate=true;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.12;this.performanceGovernor=new PerformanceGovernor(this.renderer);this.renderer.domElement.addEventListener('pointerdown',()=>{if(this.state==='mission'&&document.pointerLockElement!==this.renderer.domElement){this._mouseCaptureClick=true;this.requestMouseCapture()}});this.mount.appendChild(this.renderer.domElement);this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,700);this.camera.position.set(0,24,23);addEventListener('resize',()=>this.resize());}
+  setupRenderer(){this.renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance',stencil:false});this.renderer.setPixelRatio(Math.min(devicePixelRatio,1.35));this.renderer.setSize(innerWidth,innerHeight);this.renderer.shadowMap.enabled=this.save.data.settings.shadows;this.renderer.shadowMap.type=THREE.PCFShadowMap;this.renderer.shadowMap.autoUpdate=true;this.renderer.shadowMap.needsUpdate=true;this.renderer.outputColorSpace=THREE.SRGBColorSpace;this.renderer.toneMapping=THREE.ACESFilmicToneMapping;this.renderer.toneMappingExposure=1.12;this.performanceGovernor=new PerformanceGovernor(this.renderer);this.renderer.domElement.addEventListener('pointerdown',()=>{if(this.state==='mission'&&document.pointerLockElement!==this.renderer.domElement){this._mouseCaptureClick=true;this.requestMouseCapture()}});this.mount.appendChild(this.renderer.domElement);this.scene=new THREE.Scene();this.camera=new THREE.PerspectiveCamera(48,innerWidth/innerHeight,.1,700);this.camera.position.set(0,24,23);addEventListener('resize',()=>this.resize());}
   bindUI(){this.screen.addEventListener('click',e=>{const action=e.target.closest('[data-action]')?.dataset.action;if(!action)return;
     if (action.startsWith('teamcolor:') || action.startsWith('teamuniform:') || action.startsWith('teamgroup:') || action.startsWith('setup:alliance:') || action.startsWith('setup:role:') || action === 'setup:add' || action === 'setup:remove' || action === 'setup:randomize' || action.startsWith('setup:preset:')) {
       this.audio.play('change_team');
@@ -70,7 +74,19 @@ export class Game{
     } else {
       this.audio.play('button_click');
     }
-    if(action==='custom-match')this.showGameSetup();else if(action==='deploy'){const limit=ALL_MAPS[this.selectedMap]?.maxTeams||MAX_PLAYERS;if(this.setup.length<=limit)this.startMission('skirmish')}else if(action==='missions')this.showMissions();else if(action==='dimension:prev')this.cycleDimension(-1);else if(action==='dimension:next')this.cycleDimension(1);else if(action.startsWith('mission:')){const id=action.slice(8),mission=CAMPAIGN_MISSIONS[id];if(mission&&this.campaignMissionUnlocked(mission))this.startMission(id)}else if(action==='menu')this.showMenu();else if(action==='settings')this.showSettings();else if(action==='shop')this.showShop();else if(action==='dbuild')this.showDBuild();else if(action==='casino')this.showCasino();else if(action==='reset'){this.save.reset();this.debugMode=false;this.league=new LeagueSystem([]);this.showMenu()}
+    if(action==='arena')this.showArena();
+    else if(action==='arena:rematch')this.startArenaMatch(this.arenaConfig);
+    else if(action==='arena:garage')this.showArena();
+    else if(action==='arena:resume')this.arena?.togglePause();
+    else if(action==='arena:restart')this.startArenaMatch(this.arenaConfig);
+    else if(action==='arena:quit')this.showArena();
+    else if(action==='blitz')this.showBlitz();
+    else if(action==='blitz:rematch')this.startBlitzMatch(this.blitzConfig);
+    else if(action==='blitz:yard')this.showBlitz();
+    else if(action==='blitz:resume')this.blitz?.togglePause();
+    else if(action==='blitz:restart')this.startBlitzMatch(this.blitzConfig);
+    else if(action==='blitz:quit')this.showBlitz();
+    else if(action==='custom-match')this.showGameSetup();else if(action==='deploy'){const limit=ALL_MAPS[this.selectedMap]?.maxTeams||MAX_PLAYERS;if(this.setup.length<=limit)this.startMission('skirmish')}else if(action==='missions')this.showMissions();else if(action==='dimension:prev')this.cycleDimension(-1);else if(action==='dimension:next')this.cycleDimension(1);else if(action.startsWith('mission:')){const id=action.slice(8),mission=CAMPAIGN_MISSIONS[id];if(mission&&this.campaignMissionUnlocked(mission))this.startMission(id)}else if(action==='menu')this.showMenu();else if(action==='settings')this.showSettings();else if(action==='shop')this.showShop();else if(action==='dbuild')this.showDBuild();else if(action==='casino')this.showCasino();else if(action==='reset'){this.save.reset();this.debugMode=false;this.league=new LeagueSystem([]);this.showMenu()}
     else if(action==='pause:resume')this.resumeGame()
     else if(action==='pause:options')this.showPauseMenu(true)
     else if(action==='pause:back')this.showPauseMenu(false)
@@ -125,7 +141,7 @@ export class Game{
     if(this.scene===this.menuScene)this.scene=new THREE.Scene();
     this.menuScene=null;
   }
-  showMenu(){this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;this.endRuntime();this.state='menu';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');this.screen.innerHTML=`<main class="menu menu-home"><div class="home-panel"><h1 class="logo">Destructo</h1><p class="subtitle">Build the squad. Break the battlefield.</p><div class="home-actions"><button class="btn mission-btn" data-action="missions"><i></i><span>MISSION</span></button><button class="btn primary custom-match-btn" data-action="custom-match"><i></i><span>CUSTOM MATCH</span></button><button class="btn dbuilder-menu-btn" data-action="dbuild"><i></i><span>D-BUILDER</span><small>3D FITTING ROOM</small></button><button class="btn casino-menu-btn" data-action="casino"><i></i><span>CASINO</span><small>3 GAMES · RARE PRIZES</small></button><button class="btn" data-action="rankings">RANKINGS</button><button class="btn" data-action="settings">SETTINGS</button></div><div class="home-meta"><span class="meta-chip">🏆 ${this.save.data.missionsWon} VICTORIES</span><span class="meta-chip">◈ ${this.save.data.chips} CHIPS</span></div></div><div class="home-hint"><span>WASD MOVE · MOUSE AIM · LMB FIRE · RMB LOCK-ON · SPACE JUMP/JETPACK · 1 PRIMARY · 2 PISTOL · G GRENADE · T THROW WEAPON · E INTERACT · F MATERIALIZE · Q SKILL · TAB SQUAD</span></div></main>`}
+  showMenu(){this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;this.endRuntime();this.state='menu';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');this.screen.innerHTML=`<main class="menu menu-home"><div class="home-panel"><h1 class="logo">Destructo</h1><p class="subtitle">Build the squad. Break the battlefield.</p><div class="home-actions"><button class="btn mission-btn" data-action="missions"><i></i><span>MISSION</span></button><button class="btn primary custom-match-btn" data-action="custom-match"><i></i><span>CUSTOM MATCH</span></button><button class="btn arena-menu-btn" data-action="arena"><i></i><span>DESTRUCT-AUTO</span><small>10 BATTLE VEHICLES · 3 ARENAS</small></button><button class="btn blitz-menu-btn" data-action="blitz"><i></i><span>CRATE BLITZ</span><small>BOMB THE LATTICE · UP TO 10 PLAYERS</small></button><button class="btn dbuilder-menu-btn" data-action="dbuild"><i></i><span>D-BUILDER</span><small>3D FITTING ROOM</small></button><button class="btn casino-menu-btn" data-action="casino"><i></i><span>CASINO</span><small>3 GAMES · RARE PRIZES</small></button><button class="btn" data-action="rankings">RANKINGS</button><button class="btn" data-action="settings">SETTINGS</button></div><div class="home-meta"><span class="meta-chip">🏆 ${this.save.data.missionsWon} VICTORIES</span><span class="meta-chip">◈ ${this.save.data.chips} CHIPS</span></div></div><div class="home-hint"><span>WASD MOVE · MOUSE AIM · LMB FIRE · RMB LOCK-ON · SPACE JUMP/JETPACK · 1 PRIMARY · 2 PISTOL · G GRENADE · T THROW WEAPON · E INTERACT · F MATERIALIZE · Q SKILL · TAB SQUAD</span></div></main>`}
   // Game setup: choose team count (2-10), each team's name, color and alliance group
   showGameSetupLegacy(){this.endRuntime();this.state='setup';this.audio.playMusic('/music/main_theme.mp3');
     const rows=this.setup.map((t,i)=>{const c=TEAM_COLORS[t.colorIndex%TEAM_COLORS.length];
@@ -264,6 +280,122 @@ export class Game{
   }
   showCrateBuilder() {
     this.showDBuild('crateDesign');
+  }
+  // ── DESTRUCT-AUTO: vehicle battle arena ───────────────────────────────────
+  showArena(){
+    this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;
+    this.arenaSelect?.dispose();this.endRuntime();
+    this.state='arena-select';this.presentMenuBackdrop();this.audio.playMusic('/music/urban_vehicle_warfare.mp3');
+    this.arenaConfig={...DEFAULT_ARENA_CONFIG,...this.arenaConfig};
+    this.arenaSelect=new ArenaSelect({
+      root:this.screen,audio:this.audio,config:this.arenaConfig,
+      onLaunch:config=>{this.arenaSelect=null;this.startArenaMatch(config)},
+      onBack:()=>{this.arenaSelect?.dispose();this.arenaSelect=null;this.showMenu()},
+    });
+    this.arenaSelect.open();
+  }
+  startArenaMatch(config=this.arenaConfig){
+    this.arenaConfig={...DEFAULT_ARENA_CONFIG,...config};
+    this.arenaSelect?.dispose();this.arenaSelect=null;
+    this.endRuntime();this.disposeMenuStage();
+    this.screen.innerHTML=`<main class="menu mission-end"><h2>STARTING ENGINES</h2><p class="subtitle">DESTRUCT-AUTO · ${escapeHtml(this.arenaConfig.mapId.toUpperCase())}…</p></main>`;
+    this.hud.show(false);
+    this.arena=new ArenaMode(this,this.arenaConfig);
+    this.arena.onFinish=results=>this.showArenaResults(results);
+    this.arena.start();
+    this.screen.innerHTML='';
+    this.state='arena';
+    this.lastFrame=performance.now()/1000;
+    this.requestMouseCapture();
+    const track={crateworks:'/music/urban_vehicle_warfare.mp3',overpass:'/music/urban_vehicle_warfare.mp3',magma:'/music/volcanic_scrapyard.mp3'}[this.arenaConfig.mapId]||'/music/urban_vehicle_warfare.mp3';
+    this.audio.playMusic(track);
+  }
+  showArenaResults(results){
+    this.arena?.dispose();this.arena=null;
+    document.exitPointerLock?.();
+    this.input.enabled=false;
+    this.state='arena-results';this.presentMenuBackdrop();this.audio.playMusic('/music/main_theme.mp3');
+    const rows=results.rows.map((row,index)=>`<tr class="${row.isPlayer?'is-player':''}"><td>#${index+1}</td><td><strong style="color:${row.color}">${escapeHtml(row.name)}</strong><small>${escapeHtml(row.vehicle)}</small></td><td>${escapeHtml(row.teamName)}</td><td>${row.kills}</td><td>${row.deaths}</td><td>${row.damage}</td><td>${row.accuracy}%</td></tr>`).join('');
+    this.screen.innerHTML=`<main class="menu arena-results"><div class="screen-title"><div><span class="eyebrow">DESTRUCT-AUTO · ${escapeHtml(results.mapTitle)}</span><h2 class="${results.playerWon?'win':'loss'}">${results.playerWon?'VICTORY':'DEFEAT'}</h2></div><strong>${escapeHtml(results.winnerName)} · ${escapeHtml(results.reason)}</strong></div><div class="leaderboard-scroll"><table class="leaderboard-table"><thead><tr><th>#</th><th>DRIVER</th><th>CREW</th><th>KILLS</th><th>WRECKS</th><th>DAMAGE</th><th>ACC</th></tr></thead><tbody>${rows}</tbody></table></div><div class="menu-actions" style="margin-top:18px"><button class="btn primary" data-action="arena:rematch">REMATCH</button><button class="btn" data-action="arena:garage">GARAGE</button><button class="btn" data-action="menu">MAIN MENU</button></div></main>`;
+  }
+  endArena(){
+    if(!this.arena)return;
+    this.arena.dispose();this.arena=null;
+    document.exitPointerLock?.();
+  }
+  // ── CRATE BLITZ: grid demolition ──────────────────────────────────────────
+  showBlitz(){
+    this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.casino=null;
+    this.blitzSelect?.dispose();this.endRuntime();
+    this.state='blitz-select';this.presentMenuBackdrop();this.audio.playMusic('/music/neutral_mayhem.mp3');
+    this.blitzConfig={...DEFAULT_BLITZ_CONFIG,...this.blitzConfig};
+    this.blitzSelect=new BlitzSelect({
+      root:this.screen,audio:this.audio,config:this.blitzConfig,
+      onLaunch:config=>{this.blitzSelect=null;this.startBlitzMatch(config)},
+      onBack:()=>{this.blitzSelect?.dispose();this.blitzSelect=null;this.showMenu()},
+    });
+    this.blitzSelect.open();
+  }
+  startBlitzMatch(config=this.blitzConfig){
+    this.blitzConfig={...DEFAULT_BLITZ_CONFIG,...config};
+    this.blitzSelect?.dispose();this.blitzSelect=null;
+    this.endRuntime();this.disposeMenuStage();
+    this.screen.innerHTML=`<main class="menu mission-end"><h2>LIGHTING THE FUSE</h2><p class="subtitle">CRATE BLITZ · ${escapeHtml(this.blitzConfig.arenaId.toUpperCase())}…</p></main>`;
+    this.hud.show(false);
+    this.blitz=new BlitzMode(this,this.blitzConfig);
+    this.blitz.onFinish=results=>this.showBlitzResults(results);
+    this.blitz.start();
+    this.screen.innerHTML='';
+    this.state='blitz';
+    this.lastFrame=performance.now()/1000;
+    // Crate Blitz runs its own shuffled playlist off its own recorded set, so
+    // the shared music channel is handed back rather than pointed at a track.
+    this.audio.stopMusic();
+  }
+  // The debrief: a proper celebration, then every number the match produced.
+  showBlitzResults(results){
+    this.blitz?.dispose();this.blitz=null;
+    this.input.enabled=false;
+    this.state='blitz-results';this.presentMenuBackdrop();
+    this.audio.playMusic(results.playerWon?'/music/battle_win.mp3':'/music/battle_lost.mp3',false);
+    const medal=place=>place===1?'🥇':place===2?'🥈':place===3?'🥉':`#${place}`;
+    const stat=(label,value,icon)=>`<div class="blitz-total"><b>${icon}</b><strong>${value}</strong><span>${label}</span></div>`;
+    const rows=results.rows.map(row=>`<tr class="${row.isPlayer?'is-player':''} ${row.survived?'survived':''}">
+      <td class="place">${medal(row.placement)}</td>
+      <td><span class="blitz-row-dot" style="background:${row.colorCss}"></span><strong style="color:${row.colorCss}">${escapeHtml(row.name)}</strong><small>${escapeHtml(row.colorName)}</small></td>
+      <td style="color:${row.crewCss}">${escapeHtml(row.crewName)}</td>
+      <td>${row.kills}</td><td>${row.deaths}</td><td>${row.suicides}</td>
+      <td>${row.bombsPlaced}</td><td>${row.obstaclesDestroyed}</td><td>${row.powerupsTaken}</td>
+      <td>${Math.floor(row.survivedFor/60)}:${String(row.survivedFor%60).padStart(2,'0')}</td></tr>`).join('');
+    const you=results.rows.find(row=>row.isPlayer);
+    const headline=results.draw?'EVERYBODY LOSES':results.playerWon?'VICTORY':'ELIMINATED';
+    this.screen.innerHTML=`<main class="menu blitz-celebration ${results.playerWon?'won':'lost'}">
+      <div class="blitz-fireworks">${'<i></i>'.repeat(28)}</div>
+      <div class="blitz-celebration-head">
+        <span class="eyebrow">CRATE BLITZ · ${escapeHtml(results.arenaTitle)} · ${escapeHtml(results.modeTitle)}</span>
+        <h2 class="${results.playerWon?'win':'loss'}">${headline}</h2>
+        <p class="blitz-winner" style="--win:${results.winnerColors[0]||'#ffd23f'}">${escapeHtml(results.winnerName)}<small>${escapeHtml(results.reason)}</small></p>
+      </div>
+      ${you?`<div class="blitz-your-run"><span class="eyebrow">YOUR RUN</span><div class="blitz-totals">
+        ${stat('PLACED',medal(you.placement),'🏁')}${stat('KILLS',you.kills,'💀')}${stat('DEATHS',you.deaths,'🪦')}
+        ${stat('CHARGES DROPPED',you.bombsPlaced,'🧨')}${stat('OBSTACLES WRECKED',you.obstaclesDestroyed,'🧱')}${stat('POWER-UPS',you.powerupsTaken,'⭐')}
+      </div></div>`:''}
+      <div class="blitz-match-totals"><span class="eyebrow">MATCH TOTALS · ${Math.floor(results.duration/60)}:${String(results.duration%60).padStart(2,'0')}</span><div class="blitz-totals">
+        ${stat('CHARGES DROPPED',results.totals.bombsPlaced,'🧨')}${stat('OBSTACLES WRECKED',results.totals.obstaclesDestroyed,'🧱')}
+        ${stat('TOTAL KILLS',results.totals.kills,'💀')}${stat('POWER-UPS TAKEN',results.totals.powerupsTaken,'⭐')}
+      </div></div>
+      <div class="leaderboard-scroll"><table class="leaderboard-table blitz-table"><thead><tr>
+        <th>#</th><th>DESTRUCTO</th><th>CREW</th><th>KILLS</th><th>DEATHS</th><th>OOPS</th>
+        <th>CHARGES</th><th>WRECKED</th><th>DROPS</th><th>SURVIVED</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <div class="menu-actions" style="margin-top:18px">
+        <button class="btn primary" data-action="blitz:rematch">REMATCH</button>
+        <button class="btn" data-action="blitz:yard">MATCH SETUP</button>
+        <button class="btn" data-action="menu">MAIN MENU</button>
+      </div></main>`;
+  }
+  endBlitz(){
+    if(!this.blitz)return;
+    this.blitz.dispose();this.blitz=null;
   }
   showCasino(){
     this.marketplace?.dispose();this.marketplace=null;this.casino?.dispose();this.endRuntime();this.state='casino';this.audio.playMusic('/music/main_theme.mp3');this.casino=new Casino({root:this.screen,save:this.save,audio:this.audio,onBack:()=>{this.casino=null;this.showMenu()},onDBuilder:()=>{this.casino=null;this.showDBuild()}});this.casino.open();
@@ -520,6 +652,8 @@ export class Game{
   addUnit(classId,team,pos,opts={}){const cosmetics=!this.observerOnly&&team===this.playerTeam?this.teamCosmetics():{};const modeClass=this.gameMode==='domination'?DOMINATION_RULES.classId:classId;const unit=this.factory.createUnit(modeClass,team,pos,false,{...cosmetics,skin:this.teamMap[team]?.uniform,...opts});this.configureModeUnit(unit);unit.groundY=this.world.groundAt(unit.group.position);unit.ammo=this.debugAmmoFor(unit,this.matchRules?.startingAmmo??90);this.combatants.push(unit);this._combatantIndexDirty=true;this.entities.push(unit);this.recordDestructoCreated(unit);return unit}
   update(dt,time){
     if(this.state==='paused'){if(this.input.consume('Escape'))this.resumeGame();this.input.endFrame();return;}
+    if(this.state==='arena'){this.arena?.update(Math.min(dt,.05),time);this.input.endFrame();return;}
+    if(this.state==='blitz'){this.blitz?.update(Math.min(dt,.05),time);this.input.endFrame();return;}
     if(this.menuStage&&this.scene===this.menuScene&&MENU_BACKDROP_STATES.has(this.state)){this.menuStage.update(dt,time,this.camera);return;}
     if(this.state==='campaign_complete'){this.updateCampaignCelebration(Math.min(dt,.033));this.particles?.update?.(Math.min(dt,.033),this.camera);return;}
     if(this.state!=='mission' && this.state!=='observer' && this.state!=='victory_sequence')return;
@@ -1904,7 +2038,7 @@ export class Game{
     this.screen.innerHTML=`<main class="menu setup-menu"><div class="screen-title"><div><span class="eyebrow">GAME SETUP · ${GAME_MODES[this.selectedMode].kicker}</span><h2>${dominationMode?'DOMINION LAB':'BATTLE LAB'}</h2></div><strong>${this.setup.length} / ${mapLimit} TEAMS · ${battleShape}</strong></div><section class="mode-select"><div class="map-select-head"><span class="eyebrow">GAME MODES</span><strong>${GAME_MODES[this.selectedMode].title}</strong></div><div class="mode-grid">${modeCards}</div></section><section class="map-select"><div class="map-select-head"><span class="eyebrow">CHOOSE MAP</span><strong>${ALL_MAPS[this.selectedMap].title}</strong></div><div class="map-grid ${dominationMode?'domination-maps':''}">${mapCards}</div></section><div class="preset-strip"><button class="btn" data-action="setup:preset:duel">DUEL 1v1</button><button class="btn" data-action="setup:preset:pairs">2v2 SQUADS</button><button class="btn" data-action="setup:preset:classic">CLASSIC FFA</button><button class="btn" data-action="setup:preset:chaos">CHAOS ×8</button><button class="btn" data-action="setup:randomize">RANDOMIZE LOOKS</button></div><div class="control-status ${observerOnly?'observer':'playing'}"><strong>${observerOnly?'OBSERVER-ONLY MATCH':`PLAYING AS ${escapeHtml(this.setup[humanIndex]?.name||'YOU').toUpperCase()}`}</strong><span>${observerOnly?'All teams are AI controlled · broadcast opens at kickoff':'Click another AI badge to transfer player control · click PLAYER again to observe'}</span></div><div class="setup-layout"><section class="roster-panel"><div class="setup-list">${roster}</div><div class="roster-actions"><button class="btn" data-action="setup:remove" ${this.setup.length<=2?'disabled':''}>− TEAM</button><button class="btn" data-action="setup:add" ${this.setup.length>=mapLimit?'disabled':''}>+ TEAM</button></div></section><aside class="rules-panel"><h3>MATCH RULES</h3><label>NUMBER OF STARTING UNITS<select ${dominationMode?'disabled':'data-setup-rule="squadSize"'}>${dominationMode?'<option>4 COMMANDOS · LOCKED</option>':[1,2,3,4,5].map(v=>option(v,`${v} UNIT${v>1?'S':''}`,this.matchSetup.squadSize)).join('')}</select></label>${startingSlots}<label>STARTING AMMO<select data-setup-rule="startingAmmo">${[30,60,90,150,240].map(v=>option(v,v,this.matchSetup.startingAmmo)).join('')}</select></label><label>CPU SKILL<select data-setup-rule="aiDifficulty">${option('rookie','ROOKIE',this.matchSetup.aiDifficulty)}${option('regular','REGULAR',this.matchSetup.aiDifficulty)}${option('veteran','VETERAN',this.matchSetup.aiDifficulty)}</select></label>${modeRules}<div class="supply-plan"><strong>${dominationMode?'3 NEUTRAL CRATE RELAYS':`${this.setup.length} TEAM DEPOTS + 4 RARE RELAYS`}</strong><span>${dominationMode?'NO D-BUILDERS · FIELD DROPS ONLY':'7 COMMON CRATES AT EVERY DROP SPOT'}</span><span>${dominationMode?`${ALL_MAPS[this.selectedMap].towerCount} TOWERS · FIRST TO ${this.matchSetup.maxScore}`:'THEN NORMAL TIMERS AND CAPS'}</span></div></aside></div><div class="setup-footer"><span class="conflict-check ${deployable?'ready':'blocked'}">${conflictLabel}</span><button class="btn" data-action="menu">BACK</button><button class="btn primary" data-action="deploy" ${deployable?'':'disabled'}>${observerOnly?'WATCH AI BATTLE':'START BATTLE'}</button></div></main>`;
     if(this.selectedMap==='crown'){const supply=this.screen.querySelector('.supply-plan');if(supply)supply.innerHTML='<strong>1 SUMMIT DROP ZONE · ENTIRE MAP</strong><span>3 COMMON CRATES EVERY 1–5 SECONDS</span><span>CONTROL THE CROWN OR GET BURIED IN IT</span>'}
     this.screen.querySelectorAll('canvas[data-skin]').forEach(canvas=>paintSkinPreview(canvas,canvas.dataset.skin));this.restoreSetupView(setupView);}
-  endRuntime(){this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
+  endRuntime(){this.endArena();this.endBlitz();this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
   disposeScene(){if(!this.scene)return;this.scene.traverse(o=>{if(o.geometry)o.geometry.dispose?.();if(o.material&&!Array.isArray(o.material))o.material.dispose?.()});this.scene.clear();this.materials?.dispose?.();this.world?.dispose?.();this.materials=null;this.world=null}
   resize(){const w=innerWidth,h=innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h)}
   loop(){if(this.running)return;this.running=true;const frame=()=>{requestAnimationFrame(frame);const time=performance.now()/1000,dt=time-this.lastFrame;this.lastFrame=time;const updateStart=performance.now();this.update(dt,time);const renderStart=performance.now();this.renderer.render(this.scene,this.camera);const frameEnd=performance.now();if(['mission','observer','victory_sequence'].includes(this.state))this.performanceGovernor?.update(dt,{...this.combat?.diagnostics?.(),...this._perfBreakdown,updateMs:renderStart-updateStart,renderMs:frameEnd-renderStart})};frame()}

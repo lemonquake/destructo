@@ -218,6 +218,17 @@ export class AudioSystem {
   setMusicMuted(muted) { this.musicMuted = Boolean(muted); if (this.currentMusic) this.currentMusic.volume(this.musicMuted ? 0 : this.volumeSlider * .60); return this.musicMuted; }
   setSoundsMuted(muted) { this.soundsMuted = Boolean(muted); if (this.soundsMuted) for (const voice of [...this.activeVoices]) this.stopVoice(voice); return this.soundsMuted; }
 
+  // Hands the music channel back. Crate Blitz runs its own playlist off its own
+  // recorded set, so the shared track has to actually stop rather than duck.
+  stopMusic() {
+    if (!this.currentMusic) return;
+    const old = this.currentMusic;
+    this.currentMusic = null;
+    this.currentMusicSrc = null;
+    old.fade(old.volume(), 0, 350);
+    setTimeout(() => { try { old.stop(); old.unload(); } catch { /* already gone */ } }, 400);
+  }
+
   updateListener(camera) {
     if (!camera) return;
     Howler.pos(camera.position.x, camera.position.y, camera.position.z);

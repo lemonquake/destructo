@@ -7,6 +7,10 @@
 - **Cosmetics Rendering**: EntityFactory.js createUnit() dynamically renders equipped hats, boots, and attachments on units (including MenuStage runners/shooters and in active matches).
 - **Combat & Projectiles Integration**: CombatSystem.js maps equipped projectiles to custom 3D geometries, custom trail colors, and fire/impact particle effects for the player's units.
 - **Team Base Customization**: EntityFactory.js createFactory() inspects the player's team's equipped base style to render custom structure models.
+- **Destruct-Auto Arena**: A standalone vehicle-combat game mode under `src/game/arena/`, with ten unique battle vehicles, three dedicated arenas, its own selection screen, HUD and AI drivers. See [DESTRUCT_AUTO.md](DESTRUCT_AUTO.md).
+- **Crate Blitz**: A standalone grid-demolition game mode under `src/game/blitz/` — a Bomberman clone starring the base game's Destructo. Grid-locked movement, blasts that kill everyone regardless of crew, three destructible obstacle materials, SVG-badged power-ups, lives-and-spectator elimination, and its own recorded mixer and BGM playlist under `public/sounds/crate_blitz`. See [CRATE_BLITZ.md](CRATE_BLITZ.md).
+- **Shared Mode Rules**: `src/game/modes/MatchRules.js` holds the promises Destruct-Auto makes — unique loadout drafting, five-a-side crews, kill crediting, and time/frag win conditions with overtime. Crate Blitz is elimination-based and owns its rules in `src/game/blitz/BlitzRules.js`.
+- **WebGL context budget**: every secondary renderer (garage preview, marketplace preview, offscreen portrait rig) must release its context on teardown — `renderer.dispose()` alone leaks it, and once the browser's live-context cap is passed it drops the OLDEST context, which is the main game canvas. The portrait rig is a module-level singleton for the same reason.
 
 ## Milestones
 | # | Name | Scope | Dependencies | Status |

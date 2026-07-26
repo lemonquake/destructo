@@ -4,6 +4,9 @@ import { SKIN_TEXTURES } from './Materials.js';
 import { createWearableCosmetic } from './CosmeticModels.js';
 import { MARKETPLACE_COSMETICS } from '../data/marketplaceData.js';
 
+// One offscreen portrait renderer for the whole app — see portraitRig().
+let PORTRAIT_RIG = null;
+
 const GEO = {
   body: new THREE.BoxGeometry(1.05, 1.3, .82), head: new THREE.BoxGeometry(.92, .78, .86), hand: new THREE.BoxGeometry(.34, .34, .34), boot: new THREE.BoxGeometry(.42, .3, .62), eye: new THREE.BoxGeometry(.22, .15, .06), gun: new THREE.BoxGeometry(.22, .26, .85), barrel: new THREE.CylinderGeometry(.07, .07, .62, 6), crate: new THREE.BoxGeometry(1.15, 1.15, 1.15),
 };
@@ -485,16 +488,20 @@ export class EntityFactory {
     return { group, bg, fill, width };
   }
   // ── 3D head portrait: renders the unit's head to a small offscreen canvas once
+  // The rig is a module-level singleton, not per-factory: a factory is built for
+  // every mission, and a WebGL context per mission exhausts the browser's cap —
+  // at which point it drops the oldest context, i.e. the main game canvas.
   portraitRig() {
-    if (this._portraitRig) return this._portraitRig;
+    if (PORTRAIT_RIG) return (this._portraitRig = PORTRAIT_RIG);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setSize(96, 96); renderer.outputColorSpace = THREE.SRGBColorSpace;
     const scene = new THREE.Scene();
     scene.add(new THREE.HemisphereLight(0xe8f4ff, 0x44506a, 1.6));
     const key = new THREE.DirectionalLight(0xfff2d8, 2.2); key.position.set(1.4, 2, 2.4); scene.add(key);
     const camera = new THREE.PerspectiveCamera(34, 1, .1, 10); camera.position.set(0, .12, 1.9); camera.lookAt(0, 0, 0);
-    this._portraitRig = { renderer, scene, camera };
-    return this._portraitRig;
+    PORTRAIT_RIG = { renderer, scene, camera };
+    this._portraitRig = PORTRAIT_RIG;
+    return PORTRAIT_RIG;
   }
   // clone without userData: entity back-references are circular and would blow
   // up three's JSON-based userData copy
