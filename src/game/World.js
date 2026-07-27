@@ -3,8 +3,19 @@ import { createWaterMaterial } from './Materials.js';
 import { rollCrateType, CRATE_TYPES } from '../data/gameData.js';
 import { CrateDropScheduler, RARE_DROP_TYPES } from './CrateDropSystem.js';
 import { mapById, DEATHMATCH_SECRET_PLANS } from '../data/maps.js';
-import { MAP_SURFACE_THEMES } from '../data/mapSurfaces.js';
+import { MAP_SURFACE_THEMES, WILDS, wildsHeight, wildsIsWater, CANDY, candyHeight, candyIsSyrup } from '../data/mapSurfaces.js';
 import { NavGrid } from './Navigation.js';
+import { buildBedlamCity } from './maps/BedlamCity.js';
+import { buildRainforestWilds } from './maps/RainforestWilds.js';
+import { buildCrateExpectations } from './maps/CrateExpectations.js';
+
+// How far above a body an elevated surface may sit and still be treated as
+// standable. It matches the step-over tolerance in resolveCollisions so a unit
+// can never be blocked by a ledge it is allowed to stand on, or vice versa.
+export const STEP_UP = 1.05;
+// Nominal standing height of a unit, used to decide whether an overhead-only
+// blocker (a deck parapet, a bridge railing) is actually in the way.
+const BODY_HEIGHT = 1.9;
 
 const blacksiteFormation = (centerX, centerZ, columns, rows, spacing, count = columns * rows) => Object.freeze(Array.from({length:count},(_,index)=>Object.freeze({
   x:centerX+((index%columns)-(columns-1)/2)*spacing,
@@ -35,8 +46,13 @@ export class World {
   // teams: [{id, color, dark}] — a base + builder pad is raised for each one, spread on a ring
   build(teams = [{ id: 'blue', color: 0x2fb4ff, dark: 0x11638f }, { id: 'red', color: 0xff5062, dark: 0x8e2634 }]) {
     if(this.gameMode==='deathmatch'&&teams.length>(this.map.maxTeams||9))throw new RangeError(`${this.map.title} supports at most ${this.map.maxTeams} teams`);
-    const atmospheres={crossroads:[0x342b5c,0x554c77,.009],crown:[0x9fd8ff,0xcbeaff,.006],wilds:[0x75c79a,0x8fc8a3,.013],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012],bootcamp:[0x5f8f9c,0x8cb0a6,.011],goldrush:[0x72502c,0xb38d55,.009],'gaia-bastion':[0x704d3d,0xa47d63,.007],'storm-dam':[0x263f52,0x597985,.012],sunforge:[0x30191c,0x5d2721,.014],'gaia-blacksite':[0x07121b,0x132731,.0065]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
-    this.scene.background = new THREE.Color(atmos[0]); this.scene.fog = new THREE.FogExp2(atmos[1], this.gameMode==='deathmatch'?atmos[2]*.42:atmos[2]);
+    const atmospheres={crossroads:[0x342b5c,0x554c77,.0072],crown:[0xffd7ef,0xffe9f6,.0055],wilds:[0x2f6b4d,0x79b287,.0125],rift:[0x5a2524,0x4b2425,.018],sunken:[0x4f9d78,0x6ca680,.008],serpent:[0x536b45,0x78905e,.011],eclipse:[0x241d45,0x493a68,.012],bootcamp:[0x5f8f9c,0x8cb0a6,.011],goldrush:[0x72502c,0xb38d55,.009],'gaia-bastion':[0x704d3d,0xa47d63,.007],'storm-dam':[0x263f52,0x597985,.012],sunforge:[0x30191c,0x5d2721,.014],'gaia-blacksite':[0x07121b,0x132731,.0065]},atmos=atmospheres[this.map.id]||atmospheres.crossroads;
+    this.scene.background = new THREE.Color(atmos[0]);
+    // Fog densities were authored against the 234-unit battlefields. Thinning
+    // them in proportion to a larger map keeps the same visible depth in world
+    // units, so Bedlam's skyline is legible instead of drowned in haze.
+    const fogDensity = this.gameMode==='deathmatch' ? atmos[2]*.42*Math.min(1,234/(this.map.bounds||234)) : atmos[2];
+    this.scene.fog = new THREE.FogExp2(atmos[1], fogDensity);
     this.teams = teams;
     // base ring: player team lands at the bottom of the map, others spread evenly
     const ringRadius = this.gameMode === 'domination' ? (teams.length <= 2 ? 84 : 80) : (this.map.baseRadius || 194);
@@ -47,7 +63,14 @@ export class World {
       let z = Math.sin(angle) * ringRadius;
       this.basePositions[t.id] = new THREE.Vector3(x, 0, z);
     });
-    this.cavePosition = this.gameMode==='deathmatch'?new THREE.Vector3(0,0,-112):new THREE.Vector3(2,0,-12);
+    // The cave mouth needs open ground. In Bedlam that means the outskirt band
+    // between downtown and the ring road, well clear of the viaduct off-ramps.
+    // The cave mouth needs open ground. In candyland that means the clear
+    // shelf east of the cake foot, well outside the bottom tier and clear of
+    // both the ring road and the Fizz Lake approach.
+    this.cavePosition = this.gameMode!=='deathmatch'?new THREE.Vector3(2,0,-12)
+      :this.map.id==='crossroads'?new THREE.Vector3(-150,0,-196)
+      :this.map.id==='crown'?new THREE.Vector3(96,0,34):new THREE.Vector3(0,0,-112);
     this.planCrateDropZones();
     this.setupTerrain();
     const surfaceTheme = MAP_SURFACE_THEMES[this.map.id] || MAP_SURFACE_THEMES.wilds;
@@ -81,6 +104,10 @@ export class World {
     for (let i = 0; i < hillCount; i++) this.hills.push({ x: random() * extent*2 - extent, z: random() * extent*2 - extent, h: 1.6 + random() * 4.2, r: 10 + random() * 18 });
     const bases = Object.values(this.basePositions);
     this.heightAt = (x, z) => {
+      // Bedlam is a built city: kerbs, decks, ramps and building plinths are all
+      // authored geometry sitting flush on the ground, so the ground itself has
+      // to be dead flat or every slab would hang over a gap at one corner.
+      if(this.map.id==='crossroads')return 0;
       let h = Math.sin(x * .14 + 1.3) * Math.sin(z * .11 - .7) * .5 + .5;
       for (const hill of this.hills) { const dx = x - hill.x, dz = z - hill.z; h += hill.h * Math.exp(-(dx * dx + dz * dz) / (hill.r * hill.r)); }
       // flatten combat-critical zones: the river strip, every base, every supply
@@ -90,9 +117,7 @@ export class World {
       for (const zone of this.crateDropZonePlans || []) mask *= THREE.MathUtils.smoothstep(Math.hypot(x - zone.position.x, z - zone.position.z), 6.5, 11);
       mask *= THREE.MathUtils.smoothstep(Math.hypot(x - this.cavePosition.x, z - this.cavePosition.z), 8, 15);
       let result=Math.max(0,h*mask);
-      if(this.map.id==='crossroads')result*=.18;
       if(this.map.id==='crown'){const d=Math.hypot(x,z);result+=Math.max(0,17*(1-d/102));if(d<24)result=17.2;}
-      if(this.map.id==='wilds')result+=Math.sin(x*.055)*Math.cos(z*.06)*1.2+1.3;
       if(this.map.id==='rift'){const d=Math.hypot(x,z);result+=Math.max(0,6-d*.027);}
       if(this.map.id==='sunken'){result+=1.2+Math.sin(x*.045)*Math.cos(z*.05)*2.1;for(const [tx,tz] of [[0,0],[-48,-28],[48,-28],[-42,38],[42,38]])result*=.72+.28*THREE.MathUtils.smoothstep(Math.hypot(x-tx,z-tz),5,12);}
       if(this.map.id==='serpent'){result+=2.2+Math.max(0,10-Math.abs(z+Math.sin(x*.045)*13)*.42)+Math.sin(x*.07)*1.4;}
@@ -100,6 +125,50 @@ export class World {
       if(this.map.id==='gaia-blacksite')return 0;
       return Math.max(0,result);
     };
+    // The rainforest is an authored landscape, not a field of procedural hills:
+    // its mesa, river, plunge pool, lagoon, terraces and mire all come from one
+    // shared height function so src/game/maps/RainforestWilds.js can stand real
+    // geometry on them. Bases, depots and the cave still need level ground, so
+    // instead of the multiplicative mask above — which would punch a crater
+    // through a plateau — each of those blends the landscape toward the height
+    // at its own centre, flattening without deforming anything around it.
+    if(this.map.id==='wilds'&&this.gameMode==='deathmatch'){
+      const flats=[
+        ...bases.map(base=>({x:base.x,z:base.z,inner:25,outer:40})),
+        ...(this.crateDropZonePlans||[]).map(zone=>({x:zone.position.x,z:zone.position.z,inner:7,outer:13})),
+        {x:this.cavePosition.x,z:this.cavePosition.z,inner:9,outer:16},
+      ].map(flat=>({...flat,level:wildsHeight(flat.x,flat.z)}));
+      this.heightAt=(x,z)=>{
+        let y=wildsHeight(x,z);
+        for(const flat of flats){
+          const blend=THREE.MathUtils.smoothstep(Math.hypot(x-flat.x,z-flat.z),flat.inner,flat.outer);
+          if(blend<1)y=THREE.MathUtils.lerp(flat.level,y,blend);
+        }
+        return y;
+      };
+    }
+    // Candyland is an authored confection, not a field of procedural hills:
+    // its layer-cake tiers, cocoa run, plunge pool, fizz lake, mesa, village
+    // plate and jawbreaker bowl all come from one shared height function so
+    // src/game/maps/CrateExpectations.js can stand real geometry on them. Like
+    // the rainforest, each flat blends the landscape toward the height at its
+    // own centre rather than multiplying it down, which would punch a crater
+    // through a cake tier.
+    if(this.map.id==='crown'&&this.gameMode==='deathmatch'){
+      const flats=[
+        ...bases.map(base=>({x:base.x,z:base.z,inner:25,outer:40})),
+        ...(this.crateDropZonePlans||[]).map(zone=>({x:zone.position.x,z:zone.position.z,inner:7,outer:13})),
+        {x:this.cavePosition.x,z:this.cavePosition.z,inner:9,outer:16},
+      ].map(flat=>({...flat,level:candyHeight(flat.x,flat.z)}));
+      this.heightAt=(x,z)=>{
+        let y=candyHeight(x,z);
+        for(const flat of flats){
+          const blend=THREE.MathUtils.smoothstep(Math.hypot(x-flat.x,z-flat.z),flat.inner,flat.outer);
+          if(blend<1)y=THREE.MathUtils.lerp(flat.level,y,blend);
+        }
+        return y;
+      };
+    }
     // Height is queried by every moving unit, projectile and footstep. The
     // original procedural function evaluates dozens of exponential hills per
     // call, which becomes a frame-time hotspot in 40+ unit battles. Bake it
@@ -111,7 +180,10 @@ export class World {
     this.heightField={step,min,size,heights};
   }
   terrainGeometry() {
-    const size=this.gameMode==='domination'?214:this.bounds*2+32;const segments=this.gameMode==='domination'?120:180;const geo = new THREE.PlaneGeometry(size, size, segments, segments); geo.rotateX(-Math.PI / 2);
+    // Bedlam paints a silhouette skyline beyond the play boundary, so its
+    // ground has to reach past the boundary to sit under it.
+    const margin=this.map.id==='crossroads'?200:32;
+    const size=this.gameMode==='domination'?214:this.bounds*2+margin;const segments=this.gameMode==='domination'?120:180;const geo = new THREE.PlaneGeometry(size, size, segments, segments); geo.rotateX(-Math.PI / 2);
     const pos = geo.attributes.position;
     for (let i = 0; i < pos.count; i++) pos.setY(i, this.heightAt(pos.getX(i), pos.getZ(i)));
     geo.computeVertexNormals(); return geo;
@@ -154,10 +226,13 @@ export class World {
         uvs.push(.5 + Math.cos(angle) * t * .5, .5 + Math.sin(angle) * t * .5);
       }
     }
-    for (let i = 0; i < segments; i++) indices.push(0, 1 + i, 1 + (i + 1) % segments);
+    // Wound counter-clockwise as seen from above so the surface faces the sky.
+    // (Front-face culling is on, and these layers are only ever viewed from
+    // above — the reversed winding made them invisible on every map.)
+    for (let i = 0; i < segments; i++) indices.push(1 + (i + 1) % segments, 1 + i, 0);
     for (let band = 1; band < bands; band++) {
       const inner = 1 + (band - 1) * segments, outer = 1 + band * segments;
-      for (let i = 0; i < segments; i++) { const next = (i + 1) % segments; indices.push(inner + i, outer + i, outer + next, inner + i, outer + next, inner + next); }
+      for (let i = 0; i < segments; i++) { const next = (i + 1) % segments; indices.push(outer + next, outer + i, inner + i, inner + next, outer + next, inner + i); }
     }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); geometry.setIndex(indices);
     return this.addSurfaceMesh(geometry, layer);
@@ -173,7 +248,7 @@ export class World {
       }
     }
     const row = segments + 1;
-    for (let band = 0; band < bands; band++) for (let i = 0; i < segments; i++) { const a = band * row + i, b = a + row; indices.push(a, b, b + 1, a, b + 1, a + 1); }
+    for (let band = 0; band < bands; band++) for (let i = 0; i < segments; i++) { const a = band * row + i, b = a + row; indices.push(b + 1, b, a, a + 1, b + 1, a); }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); geometry.setIndex(indices);
     return this.addSurfaceMesh(geometry, layer);
   }
@@ -186,15 +261,25 @@ export class World {
     const positions = [], uvs = [], indices = [], distances = [0];
     for (let i = 1; i < centers.length; i++) distances.push(distances[i - 1] + centers[i].distanceTo(centers[i - 1]));
     const total = distances[distances.length - 1] || 1;
+    // Sampled across the width as well as along it. With only the two outer
+    // edges, a wide ribbon interpolates its height linearly between them — so
+    // anywhere it crosses a bank, a gorge or a cliff foot it stops following
+    // the ground and becomes a flat sheet hanging in the air.
+    const columns = Math.max(1, Math.round(layer.width / 4));
     for (let i = 0; i < centers.length; i++) {
       const before = centers[Math.max(0, i - 1)], after = centers[Math.min(centers.length - 1, i + 1)];
       const tangent = after.clone().sub(before).normalize(), right = new THREE.Vector2(-tangent.y, tangent.x);
-      for (const side of [-1, 1]) {
-        const point = centers[i].clone().addScaledVector(right, layer.width * .5 * side);
-        positions.push(point.x, this.surfaceHeight(point.x, point.y, layer), point.y); uvs.push(side < 0 ? 0 : 1, distances[i] / total);
+      for (let column = 0; column <= columns; column++) {
+        const across = (column / columns - .5) * layer.width;
+        const point = centers[i].clone().addScaledVector(right, across);
+        positions.push(point.x, this.surfaceHeight(point.x, point.y, layer), point.y); uvs.push(column / columns, distances[i] / total);
       }
     }
-    for (let i = 0; i < centers.length - 1; i++) { const a = i * 2, b = a + 2; indices.push(a, b, b + 1, a, b + 1, a + 1); }
+    const stride = columns + 1;
+    for (let i = 0; i < centers.length - 1; i++) for (let column = 0; column < columns; column++) {
+      const a = i * stride + column, b = a + stride;
+      indices.push(b + 1, b, a, a + 1, b + 1, a);
+    }
     const geometry = new THREE.BufferGeometry(); geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3)); geometry.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2)); geometry.setIndex(indices);
     return this.addSurfaceMesh(geometry, layer);
   }
@@ -213,8 +298,40 @@ export class World {
     return this.addSurfaceMesh(geometry, layer);
   }
   registerCollider(object,options={},entity=null){
-    const collider={object,entity,shape:options.shape||'box',halfX:options.halfX||1,halfZ:options.halfZ||1,radius:options.radius||1,top:options.top||0,bottom:options.bottom??-Infinity,blocking:options.blocking!==false,walkable:Boolean(options.walkable),enabled:true};
+    const collider={object,entity,shape:options.shape||'box',halfX:options.halfX||1,halfZ:options.halfZ||1,radius:options.radius||1,top:options.top||0,bottom:options.bottom??-Infinity,blocking:options.blocking!==false,walkable:Boolean(options.walkable),enabled:true,
+      // A ramp is a box footprint whose walkable surface climbs linearly from
+      // `rampLow` (at local -Z) to `rampHigh` (at local +Z), both relative to
+      // the object origin. Everything else keeps a flat `top`.
+      rampLow:options.rampLow||0,rampHigh:options.rampHigh??options.top??0,
+      // Vertical thickness of a floating ramp plate. Infinite for an embankment
+      // filled to the ground; ballistics uses it to know where the wedge ends.
+      rampThickness:options.rampThickness??Infinity,
+      // Elevated surfaces (rooftops, viaduct decks, skybridges) only support a
+      // body that is already at their level — otherwise anyone walking beneath
+      // them would be snapped up through the deck.
+      elevated:Boolean(options.elevated),
+      // Blockers that only exist above the street (railings, deck parapets)
+      // stay out of the ground-level navigation grid; ramps do the opposite —
+      // they are walkable for the player but excluded from AI routes so the
+      // 2D planner never sends a squad up onto a roof it cannot path along.
+      navBlock:Boolean(options.navBlock),navIgnore:Boolean(options.navIgnore),
+      // How far this collider's object is allowed to travel from where it was
+      // registered. The broadphase indexes it over that whole footprint once,
+      // so something that moves every frame (a rolling gumball) never has to
+      // dirty — and therefore rebuild — the index for the entire map. Exact
+      // containment is always re-tested against the live transform, so a
+      // padded bucket only ever costs a few extra candidate checks.
+      motionPad:options.motionPad||0,
+    };
     this.colliders.push(collider);this.colliderIndexDirty=true;if(entity){entity.colliderHandles=entity.colliderHandles||[];entity.colliderHandles.push(collider)}return collider;
+  }
+  // Surface height of one walkable collider at a world position, honouring the
+  // linear slope of ramps. Assumes the position is already inside the footprint.
+  colliderSurfaceAt(position,collider,frame=this.colliderFrame(collider)){
+    if(collider.shape!=='ramp')return frame.position.y+collider.top;
+    const local=this.toColliderLocal(position.x-frame.position.x,position.z-frame.position.z,frame.rotation);
+    const span=collider.halfZ*2,t=span>0?THREE.MathUtils.clamp((local.z+collider.halfZ)/span,0,1):0;
+    return frame.position.y+collider.rampLow+(collider.rampHigh-collider.rampLow)*t;
   }
   colliderFrame(collider){
     const frame=collider._frame||(collider._frame={position:new THREE.Vector3(),quaternion:new THREE.Quaternion(),euler:new THREE.Euler(),rotation:0});
@@ -224,7 +341,7 @@ export class World {
   }
   rebuildColliderIndex(){
     this.colliderIndex.clear();const size=this.colliderCellSize;
-    for(const collider of this.colliders){const frame=this.colliderFrame(collider),extent=collider.shape==='cylinder'?collider.radius:Math.hypot(collider.halfX,collider.halfZ),minX=Math.floor((frame.position.x-extent)/size),maxX=Math.floor((frame.position.x+extent)/size),minZ=Math.floor((frame.position.z-extent)/size),maxZ=Math.floor((frame.position.z+extent)/size);for(let x=minX;x<=maxX;x++)for(let z=minZ;z<=maxZ;z++){const key=`${x},${z}`,cell=this.colliderIndex.get(key);if(cell)cell.push(collider);else this.colliderIndex.set(key,[collider])}}
+    for(const collider of this.colliders){const frame=this.colliderFrame(collider),extent=(collider.shape==='cylinder'?collider.radius:Math.hypot(collider.halfX,collider.halfZ))+(collider.motionPad||0),minX=Math.floor((frame.position.x-extent)/size),maxX=Math.floor((frame.position.x+extent)/size),minZ=Math.floor((frame.position.z-extent)/size),maxZ=Math.floor((frame.position.z+extent)/size);for(let x=minX;x<=maxX;x++)for(let z=minZ;z<=maxZ;z++){const key=`${x},${z}`,cell=this.colliderIndex.get(key);if(cell)cell.push(collider);else this.colliderIndex.set(key,[collider])}}
     this.colliderIndexDirty=false;
   }
   collidersInBounds(minX,maxX,minZ,maxZ){
@@ -232,19 +349,52 @@ export class World {
   }
   collidersNear(position,padding=0){return this.collidersInBounds(position.x-padding,position.x+padding,position.z-padding,position.z+padding)}
   collidersForSegment(start,end,padding=0){return this.collidersInBounds(Math.min(start.x,end.x)-padding,Math.max(start.x,end.x)+padding,Math.min(start.z,end.z)-padding,Math.max(start.z,end.z)+padding)}
+  // world → collider-local. THREE's Y rotation maps local +Z to world
+  // (sin θ, cos θ), so the inverse is a plain 2-D rotation by +θ. Getting the
+  // sign wrong mirrors every rotated box, which is invisible on squares and
+  // very much not invisible on long walls and ramps.
+  toColliderLocal(dx,dz,rotation,out={x:0,z:0}){
+    const cos=Math.cos(rotation),sin=Math.sin(rotation);
+    out.x=dx*cos-dz*sin;out.z=dx*sin+dz*cos;return out;
+  }
+  fromColliderLocal(lx,lz,rotation,out={x:0,z:0}){
+    const cos=Math.cos(rotation),sin=Math.sin(rotation);
+    out.x=lx*cos+lz*sin;out.z=-lx*sin+lz*cos;return out;
+  }
   colliderContains(position,collider,padding=0){
     const frame=this.colliderFrame(collider),dx=position.x-frame.position.x,dz=position.z-frame.position.z;
     if(collider.shape==='cylinder')return dx*dx+dz*dz<=(collider.radius+padding)**2;
-    const cos=Math.cos(-frame.rotation),sin=Math.sin(-frame.rotation),lx=dx*cos-dz*sin,lz=dx*sin+dz*cos;
-    return Math.abs(lx)<=collider.halfX+padding&&Math.abs(lz)<=collider.halfZ+padding;
+    const local=this.toColliderLocal(dx,dz,frame.rotation);
+    return Math.abs(local.x)<=collider.halfX+padding&&Math.abs(local.z)<=collider.halfZ+padding;
   }
   removeCollidersFor(entity){for(const collider of entity?.colliderHandles||[])collider.enabled=false;this.nav?.invalidate();}
-  walkableTopAt(position){let top=null;for(const collider of this.collidersNear(position,.08)){if(!collider.enabled||!collider.walkable||collider.entity?.dead||!this.colliderContains(position,collider,.08))continue;const y=this.colliderFrame(collider).position.y+collider.top;if(top===null||y>top)top=y;}return top;}
-  groundAt(position) { const terrain=this.heightAt(position.x, position.z),platform=this.walkableTopAt(position);return platform===null?terrain:Math.max(terrain,platform); }
+  // Highest walkable surface under `position`. `referenceY` is the height of the
+  // body doing the query: elevated decks are only offered to a body already at
+  // or just below their level, so a unit in the street never gets teleported
+  // onto the viaduct passing overhead.
+  //
+  // `slack` is how far above itself a body may claim a surface. It defaults to
+  // the step-over tolerance, which is right for something with legs; ballistics
+  // passes a hair, because a bullet cannot step up onto anything.
+  walkableTopAt(position,referenceY=position?.y,slack=STEP_UP){
+    const limit=Number.isFinite(referenceY)?referenceY+slack:Infinity;
+    let top=null;
+    for(const collider of this.collidersNear(position,.08)){
+      if(!collider.enabled||!collider.walkable||collider.entity?.dead||!this.colliderContains(position,collider,.08))continue;
+      const y=this.colliderSurfaceAt(position,collider);
+      if(collider.elevated&&y>limit)continue;
+      if(top===null||y>top)top=y;
+    }
+    return top;
+  }
+  groundAt(position,referenceY=position?.y,slack=STEP_UP) { const terrain=this.heightAt(position.x, position.z),platform=this.walkableTopAt(position,referenceY,slack);return platform===null?terrain:Math.max(terrain,platform); }
   walkablePosition(position,radius=.72,maxRing=12){const result=position.clone();if(this.nav?.blockedAt(result.x,result.z,radius)){const cell=this.nav.nearestFreeCell(this.nav.cellX(result.x),this.nav.cellZ(result.z),maxRing);if(cell)result.copy(this.nav.toWorld(cell.cx,cell.cz))}result.y=this.groundAt(result);return result}
   deploymentPosition(teamId,index=0,radius=.72){const slots=this.deploymentPositions?.[teamId];if(!slots?.length)return null;return this.walkablePosition(slots[index%slots.length],radius)}
   surfaceAt(position) {
     if (this.isWater(position)) return 'water';
+    // Candyland is soft the whole way down: a round hitting a cake tier should
+    // thud like the icing it is, not ricochet off granite.
+    if (this.map.id === 'crown' && this.gameMode === 'deathmatch') return 'dirt';
     return ['crossroads', 'crown', 'rift', 'sunken'].includes(this.map.id) ? 'rock' : 'dirt';
   }
   createBridge(x) {
@@ -291,7 +441,20 @@ export class World {
       return;
     }
     if(this.map.id==='crown'){
-      this.crateDropZonePlans=[{id:'summit-crown',label:'THE CRATE CROWN',kind:'rare',color:0xffd23f,position:new THREE.Vector3(0,0,0),types:['brown'],radius:5.2,burst:3,interval:{minSeconds:1,maxSeconds:5}}];
+      // The summit triple-drop is the map's whole economy and stays exactly as
+      // authored. The four candy-shop relays around it are new: five armies on
+      // a 234-unit battlefield need somewhere to fight over that is not the one
+      // hill, and each relay sits on a district plaza CrateExpectations keeps
+      // clear for it (see CANDY_DISTRICTS in src/data/mapSurfaces.js).
+      this.crateDropZonePlans=[
+        {id:'summit-crown',label:'THE CRATE CROWN',kind:'rare',color:0xffd23f,position:new THREE.Vector3(0,0,0),types:['brown'],radius:5.2,burst:3,interval:{minSeconds:1,maxSeconds:5}},
+        ...[
+          ['relay-flosswood','FLOSSWOOD CANDY SHOP',-70,128],
+          ['relay-peppermint','PEPPERMINT CANDY SHOP',-152,-34],
+          ['relay-village','GINGERBREAD CANDY SHOP',-16,-148],
+          ['relay-quarry','JAWBREAKER CANDY SHOP',128,96],
+        ].map(([id,label,x,z])=>({id,label,kind:'rare',color:0x7fe8ff,position:new THREE.Vector3(x,0,z),types:[...RARE_DROP_TYPES],radius:4.2})),
+      ];
       return;
     }
     const teamZones = this.teams.map(team => {
@@ -301,12 +464,28 @@ export class World {
       const position = base.clone().addScaledVector(toCenter, 34).addScaledVector(toLeft, 26);
       return { id: `team-${team.id}`, label: `${team.name || team.id.toUpperCase()} DEPOT`, kind: 'team', teamId: team.id, color: team.color, position, types: ['brown'], radius: 4.2 };
     });
-    const rareZones = [
+    // Bedlam's downtown is solid blocks, so its rare relays sit on the four open
+    // corners of the ring boulevard instead of on top of a city block.
+    const rarePlan = this.map.id === 'crossroads' ? [
+      ['rare-southwest', 'SOUTHWEST INTERCHANGE', -222, -222],
+      ['rare-southeast', 'DOCKSIDE INTERCHANGE', 222, -222],
+      ['rare-northwest', 'FREIGHT INTERCHANGE', -222, 222],
+      ['rare-northeast', 'STADIUM INTERCHANGE', 222, 222],
+    // The rainforest's landforms occupy the generic ±88 corners — one of them
+    // is open water — so its rare relays sit on the four clear shoulders
+    // between the mesa, the terraces, the lagoon and the mire.
+    ] : this.map.id === 'wilds' ? [
+      ['rare-west', 'CANOPY RELAY', -112, -6],
+      ['rare-north', 'HERON RELAY', 34, 104],
+      ['rare-east', 'EASTERN SHORE RELAY', 150, -30],
+      ['rare-south', 'ROOTMIRE RELAY', -40, -104],
+    ] : [
       ['rare-southwest', 'EMBER RELAY', -88, -88],
       ['rare-southeast', 'TIDAL RELAY', 88, -88],
       ['rare-northwest', 'TEMPLE RELAY', -88, 88],
       ['rare-northeast', 'FORT RELAY', 88, 88],
-    ].map(([id, label, x, z]) => ({ id, label, kind: 'rare', color: 0x7fe8ff, position: new THREE.Vector3(x, 0, z), types: [...RARE_DROP_TYPES], radius: 4.2 }));
+    ];
+    const rareZones = rarePlan.map(([id, label, x, z]) => ({ id, label, kind: 'rare', color: 0x7fe8ff, position: new THREE.Vector3(x, 0, z), types: [...RARE_DROP_TYPES], radius: 4.2 }));
     this.crateDropZonePlans = [...teamZones, ...rareZones];
   }
   setupCrateDropZones() {
@@ -415,7 +594,48 @@ export class World {
       if(this.map.id==='gaia-bastion')for(const [x,z] of [[-62,-8],[-48,24],[55,39],[67,11],[-72,56]])this.wildlife.push(this.factory.createWildlife('bear',new THREE.Vector3(x,this.heightAt(x,z),z)));
       return;
     }
-    const population=this.gameMode==='deathmatch'?(this.map.id==='wilds'?360:this.map.id==='crossroads'?125:210):(this.map.id==='wilds'?220:this.map.id==='crossroads'?55:120),extent=this.bounds-12;
+    // Bedlam is wall-to-wall city: BedlamCity plants its own parks and street
+    // furniture, and scattering boulders through a downtown grid would drop
+    // them inside buildings. Its wildlife lives in the two park blocks instead.
+    if(this.gameMode==='deathmatch'&&this.map.id==='crossroads'){
+      for(const [kind,x,z] of [['sheep',-146,154],['sheep',-155,145],['sheep',154,-146],['wolf',-142,146],['wolf',146,-155],['slime',158,-142],['slime',-158,143],['slime',6,-96]]){
+        this.wildlife.push(this.factory.createWildlife(kind,new THREE.Vector3(x,this.heightAt(x,z),z)));
+      }
+      return;
+    }
+    // The rainforest plants itself: RainforestWilds knows where the water, the
+    // cliffs and the temple courtyards are, so scattering blind here would drop
+    // trees into the lagoon and boulders through the ziggurat. Only the animals
+    // are placed from this side, in loose territories rather than one flat mesh
+    // of noise — herds on the open trails, packs on the high ground, slimes in
+    // the mire and along the river.
+    if(this.gameMode==='deathmatch'&&this.map.id==='wilds'){
+      const territories=[['sheep',-24,26,26],['sheep',46,26,24],['sheep',-6,62,22],['sheep',96,-16,26],['sheep',-124,60,20],['wolf',118,52,26],['wolf',-92,80,24],['wolf',82,88,22],['wolf',-146,-6,24],['slime',-96,-88,30],['slime',-30,-64,22],['slime',70,-70,26],['slime',-30,30,18]];
+      for(const [kind,cx,cz,spread] of territories)for(let i=0;i<4;i++){
+        const angle=random()*Math.PI*2,reach=Math.sqrt(random())*spread,x=cx+Math.cos(angle)*reach,z=cz+Math.sin(angle)*reach;
+        if(this.nearBase(x,z,34)||this.nearDropZone(x,z,9))continue;
+        this.wildlife.push(this.factory.createWildlife(kind,new THREE.Vector3(x,this.heightAt(x,z),z)));
+      }
+      return;
+    }
+    // Candyland plants itself: CrateExpectations knows where the syrup, the
+    // cake walls and the roads are, so scattering blind here would drop trees
+    // into the cocoa run and boulders through a gingerbread house. Only the
+    // animals are placed from this side, in loose territories — marshmallow
+    // sheep on the open buttercream, licorice wolves on the high ground and in
+    // the bowl, gummy slimes along the syrup.
+    if(this.gameMode==='deathmatch'&&this.map.id==='crown'){
+      const territories=[['sheep',-70,128,26],['sheep',-16,-148,24],['sheep',52,120,26],['sheep',-136,64,22],['sheep',118,18,24],
+        ['wolf',128,96,26],['wolf',-152,-34,22],['wolf',-118,-108,24],['wolf',150,-24,22],
+        ['slime',50,-126,26],['slime',-108,70,18],['slime',140,-78,28],['slime',-88,-62,22]];
+      for(const [kind,cx,cz,spread] of territories)for(let i=0;i<4;i++){
+        const angle=random()*Math.PI*2,reach=Math.sqrt(random())*spread,x=cx+Math.cos(angle)*reach,z=cz+Math.sin(angle)*reach;
+        if(this.nearBase(x,z,34)||this.nearDropZone(x,z,9)||this.isWater({x,z}))continue;
+        this.wildlife.push(this.factory.createWildlife(kind,new THREE.Vector3(x,this.heightAt(x,z),z)));
+      }
+      return;
+    }
+    const population=this.gameMode==='deathmatch'?(this.map.id==='wilds'?360:210):(this.map.id==='wilds'?220:this.map.id==='crossroads'?55:120),extent=this.bounds-12;
     for (let i = 0; i < population; i++) {
       let x = random() * extent*2 - extent, z = random() * extent*2 - extent; if (this.nearBase(x, z, 31) || this.nearDropZone(x, z, 9)) { i--; continue; }
       if (i < population*(this.map.id==='wilds' ? .82 : .54)) this.createTree(x, z, .75 + random() * .65); else this.createRock(x, z, .6 + random() * 1.5);
@@ -483,6 +703,29 @@ export class World {
   createRock(x, z, scale) { const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(scale, 0), this.materials.stone); rock.position.set(x, this.heightAt(x, z) + scale * .55, z); rock.scale.y = .65; rock.rotation.set(Math.random(), Math.random(), Math.random()); rock.castShadow = rock.receiveShadow = true; const d = { id: crypto.randomUUID(), type: 'prop', subtype: 'rock', group: rock, hp: 140, maxHp: 140, radius: scale, dead: false }; rock.userData.entity = d; this.destructibles.push(d); this.scene.add(rock); }
   buildInteractives() {
     if(this.gameMode==='campaign')return;
+    // Bedlam's street grid leaves no free ground at the generic offsets, so the
+    // bunker sits in a marked junction and the city supplies its own bikes.
+    if(this.gameMode==='deathmatch'&&this.map.id==='crossroads'){
+      this.bunker=this.factory.createBunker(new THREE.Vector3(30,0,60));this.interactiveStructures.push(this.bunker);return;
+    }
+    // The rainforest's generic offsets land in the lagoon and on the mesa cliff,
+    // so the bunker and the bikes get authored spots: a ranger post on the north
+    // trail, and four machines abandoned where the trails meet.
+    if(this.gameMode==='deathmatch'&&this.map.id==='wilds'){
+      const bunkerPos=new THREE.Vector3(36,0,72);bunkerPos.y=this.heightAt(bunkerPos.x,bunkerPos.z);
+      this.bunker=this.factory.createBunker(bunkerPos);this.interactiveStructures.push(this.bunker);
+      for(const [x,z,r] of [[-104,22,.4],[46,26,-1.9],[-58,-50,2.3],[96,-16,-.6]])this.motorcycles.push(this.factory.createMotorcycle(new THREE.Vector3(x,this.heightAt(x,z),z),r));
+      return;
+    }
+    // Candyland's generic offsets land on the cake's second tier and inside the
+    // cocoa run, so the bunker gets an authored spot on the ring road and the
+    // four machines are abandoned where the spoke roads meet it.
+    if(this.gameMode==='deathmatch'&&this.map.id==='crown'){
+      const bunkerPos=new THREE.Vector3(-24,0,-114);bunkerPos.y=this.heightAt(bunkerPos.x,bunkerPos.z);
+      this.bunker=this.factory.createBunker(bunkerPos);this.interactiveStructures.push(this.bunker);
+      for(const [x,z,r] of [[8,124,.3],[-124,26,-1.5],[112,-52,2.4],[122,64,-.7]])this.motorcycles.push(this.factory.createMotorcycle(new THREE.Vector3(x,this.heightAt(x,z),z),r));
+      return;
+    }
     const scale=this.gameMode==='deathmatch'?3:1,bunkerPos=new THREE.Vector3(12*scale,this.heightAt(12*scale,24*scale),24*scale);this.bunker=this.factory.createBunker(bunkerPos);this.interactiveStructures.push(this.bunker);
     for(const [x,z,r] of [[-33*scale,-18*scale,.45],[31*scale,-29*scale,-.8],[-38*scale,34*scale,2.25],[37*scale,27*scale,-2.4]]){
       this.motorcycles.push(this.factory.createMotorcycle(new THREE.Vector3(x,this.heightAt(x,z),z),r));
@@ -490,7 +733,8 @@ export class World {
   }
   buildThemedContent(){
     if(this.map.id==='crossroads')this.buildCity();
-    else if(this.map.id==='wilds')this.buildJungleRuins();
+    else if(this.map.id==='wilds'){if(this.gameMode==='deathmatch')this.wildsLandmarks=buildRainforestWilds(this);else this.buildJungleRuins()}
+    else if(this.map.id==='crown'){if(this.gameMode==='deathmatch')this.candyLandmarks=buildCrateExpectations(this);else this.buildSummitArena()}
     else if(this.map.id==='rift')this.buildVolcanicFoundry();
     else if(this.map.id==='sunken')this.buildSunkenCrown();
     else if(this.map.id==='serpent')this.buildSerpentSpine();
@@ -583,6 +827,9 @@ export class World {
     if(collider){geometry.computeBoundingBox();const box=geometry.boundingBox,size=new THREE.Vector3();box.getSize(size);this.registerCollider(object,{shape:'box',halfX:size.x*.5,halfZ:size.z*.5,top:box.max.y,blocking:!walkable,walkable},entity)}return object;
   }
   buildCity(){
+    // Deathmatch runs the authored megacity; the compact procedural grid below
+    // stays for any other mode that lands on this map.
+    if(this.gameMode==='deathmatch'){this.cityLandmarks=buildBedlamCity(this);return}
     const palette=['urban_brick','neon_concrete','corrugated_steel','city_glass'];let n=0;
     const grid=this.gameMode==='deathmatch'?[-168,-112,-56,0,56,112,168]:[-56,-28,0,28,56];
     for(const x of grid)for(const z of grid){if(this.nearBase(x,z,32)||Math.hypot(x,z)<24||(Math.abs(x)<18||Math.abs(z)<18))continue;const h=9+((n*7)%18),w=16+(n%3)*3,d=16+((n+1)%3)*3,group=new THREE.Group();group.position.set(x,this.heightAt(x,z),z);const body=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),this.materials.building(palette[n%palette.length],{repeat:4}));body.position.y=h/2;body.castShadow=body.receiveShadow=true;group.add(body);const roof=new THREE.Mesh(new THREE.BoxGeometry(w+1,.5,d+1),this.materials.building('rooftop',{repeat:3}));roof.position.y=h+.25;roof.castShadow=roof.receiveShadow=true;group.add(roof);const trim=new THREE.Mesh(new THREE.BoxGeometry(w+1.15,.3,d+1.15),this.materials.building('neon_concrete',{repeat:3}));trim.position.y=h-.15;group.add(trim);this.scene.add(group);const entity={id:crypto.randomUUID(),type:'prop',subtype:'building',group,hp:700+h*30,maxHp:700+h*30,radius:Math.max(w,d)*.45,dead:false,jellyStrength:.25,attachments:[roof,trim]};group.traverse(o=>{if(o.isMesh)o.userData.entity=entity});this.destructibles.push(entity);this.registerCollider(body,{shape:'box',halfX:w/2,halfZ:d/2,top:h/2},entity);n++}
@@ -600,10 +847,15 @@ export class World {
     const plans=DEATHMATCH_SECRET_PLANS[this.map.id]||[];
     for(const {name,x,z,wall:wallTexture,cache:cacheTexture,reward} of plans){
       const objects=[],angle=Math.atan2(-x,-z),group=new THREE.Group();group.name=`secret-${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;this.scene.add(group);
-      const walls=[[0,7,18,1.4,0],[-8.3,0,1.4,15,0],[8.3,0,1.4,15,0]];
-      for(const [dx,dz,w,d,rotation] of walls){const wall=this.themedProp(new THREE.BoxGeometry(w,5,d),wallTexture,x+dx,z+dz,2.5,760,Math.max(w,d)*.5,{repeat:3});wall.rotation.y=angle+rotation;objects.push(wall)}
+      // Local +Z points at the map centre, so the back wall goes behind the
+      // cache and the chamber opens toward the fight. Offsets are rotated with
+      // the walls — placing rotated walls at unrotated offsets swings them
+      // across the entrance and seals the vault.
+      const place=(dx,dz)=>this.fromColliderLocal(dx,dz,angle);
+      const walls=[[0,-7,18,1.4],[-8.3,0,1.4,15],[8.3,0,1.4,15]];
+      for(const [dx,dz,w,d] of walls){const at=place(dx,dz),wall=this.themedProp(new THREE.BoxGeometry(w,5,d),wallTexture,x+at.x,z+at.z,2.5,760,Math.max(w,d)*.5,{repeat:3});wall.rotation.y=angle;objects.push(wall)}
       const pedestal=this.themedProp(new THREE.CylinderGeometry(3.2,4.2,1.3,8),cacheTexture,x,z,0.65,620,4.2,{repeat:2,walkable:true});objects.push(pedestal);
-      for(const side of [-1,1]){const marker=this.themedProp(new THREE.ConeGeometry(.65,3.8,5),'crystal',x+side*5,z-3,1.9,240,.8,{emissive:this.map.accent,emissiveIntensity:.7});objects.push(marker)}
+      for(const side of [-1,1]){const at=place(side*5,3),marker=this.themedProp(new THREE.ConeGeometry(.65,3.8,5),'crystal',x+at.x,z+at.z,1.9,240,.8,{emissive:this.map.accent,emissiveIntensity:.7});objects.push(marker)}
       const caches=[];for(const [dx,type] of [[-1.6,'yellow'],[1.6,reward]]){const position=new THREE.Vector3(x+dx,0,z);position.y=this.groundAt(position);const crate=this.factory.createCrate(position,CRATE_TYPES[type]);crate.sourceDropZoneId=`secret-${name.toLowerCase().replace(/[^a-z0-9]+/g,'-')}`;this.crates.push(crate);caches.push(crate)}
       this.secretPlaces.push({name,position:new THREE.Vector3(x,this.heightAt(x,z),z),radius:11,objects,caches});
     }
@@ -653,6 +905,12 @@ export class World {
   buildDecorations() {
     if(this.gameMode==='campaign')return;
     if(this.gameMode==='deathmatch'){
+      // Bedlam already has a painted street network and its own planting, the
+      // rainforest paints its own trails and grows its own rim forest, and
+      // candyland has a painted ring road, five spokes and a wall of giant
+      // lollipops of its own. Dirt roads driven straight over a layer-cake
+      // mountain and a ring of grey boulders would only fight all three.
+      if(this.map.id==='crossroads'||this.map.id==='wilds'||this.map.id==='crown')return;
       for(const base of Object.values(this.basePositions)){const inward=base.clone().multiplyScalar(-1).setY(0).normalize(),junction=inward.clone().multiplyScalar(112);this.createRoad(base.clone().addScaledVector(inward,25),junction,5.5);this.createRoad(junction,new THREE.Vector3(0,0,0),4.2)}
       const random=this.seeded(9981);for(let i=0;i<150;i++){const angle=random()*Math.PI*2,radius=this.bounds-18-random()*14,x=Math.cos(angle)*radius,z=Math.sin(angle)*radius;if(this.nearBase(x,z,32))continue;if(this.map.id==='rift'||this.map.id==='crown')this.createRock(x,z,1+random()*2.1);else this.createTree(x,z,.8+random()*.9)}return;
     }
@@ -807,6 +1065,8 @@ export class World {
   update(time, dt = 0, particles = null) {
     if(this.destroJet){const {group,drop,beam,beaconTop,engineGlows=[],navLights=[],runwayLights=[],jetLight,extractionLight,baseY}=this.destroJet,pulse=.72+Math.sin(time*8)*.25;group.position.y=baseY+Math.sin(time*1.8)*.22;group.rotation.z=Math.sin(time*.9)*.018;group.rotation.x=Math.sin(time*1.15)*.012;drop.rotation.y=time*.9;drop.scale.setScalar(1+Math.sin(time*4.5)*.06);if(beam)beam.material.opacity=.08+Math.sin(time*5)*.045;if(beaconTop){beaconTop.rotation.z=time*1.7;beaconTop.scale.setScalar(1+Math.sin(time*3.5)*.12)}engineGlows.forEach((glow,i)=>{glow.material.opacity=pulse;glow.scale.setScalar(1+Math.sin(time*13+i)*.3)});navLights.forEach((light,i)=>light.visible=Math.sin(time*5+i*Math.PI)>.05);runwayLights.forEach((light,i)=>{light.material.opacity=.45+Math.sin(time*4-i*.7)*.45;light.scale.y=.8+Math.sin(time*5-i)*.2});if(jetLight)jetLight.intensity=18+pulse*12;if(extractionLight)extractionLight.intensity=22+Math.sin(time*4)*8}
     this.waterMaterial.uniforms.uTime.value = time;
+    this.wildsAnimation?.update(time, dt);
+    this.candyAnimation?.update(time, dt);
     for(const [i,tower] of this.dominationTowers.entries()){
       const capture=tower.captureProgress/5,pulse=.5+.5*Math.sin(time*(tower.contested?13:4)+i),active=Boolean(tower.captureTeam);
       tower.crown.rotation.y=time*(active?2.8:1.05)+i;tower.crown.rotation.z=Math.PI/4+Math.sin(time*2+i)*.12;
@@ -958,15 +1218,18 @@ export class World {
     for(const collider of this.collidersNear(pos,r1)){
       if(!collider.enabled||!collider.blocking||collider.entity?.dead||collider.entity===entity)continue;
       const frame=this.colliderFrame(collider),top=frame.position.y+collider.top;
-      if(pos.y>=top-1.05)continue;
+      if(pos.y>=top-STEP_UP)continue;
+      // Overhead-only blockers (railings on a skybridge, a parapet on a roof)
+      // stop bodies at their own level and let the street below run clear.
+      if(collider.bottom>-Infinity&&pos.y+BODY_HEIGHT<=frame.position.y+collider.bottom)continue;
       const dx=pos.x-frame.position.x,dz=pos.z-frame.position.z;
       if(collider.shape==='cylinder'){
         const min=collider.radius+r1,distSq=dx*dx+dz*dz;if(distSq>=min*min)continue;collisions++;const dist=Math.sqrt(distSq)||1;pos.x=frame.position.x+(distSq?dx/dist:1)*min;pos.z=frame.position.z+(distSq?dz/dist:0)*min;
       }else{
-        const cos=Math.cos(-frame.rotation),sin=Math.sin(-frame.rotation),lx=dx*cos-dz*sin,lz=dx*sin+dz*cos,hx=collider.halfX+r1,hz=collider.halfZ+r1;if(Math.abs(lx)>=hx||Math.abs(lz)>=hz)continue;
+        const local=this.toColliderLocal(dx,dz,frame.rotation),lx=local.x,lz=local.z,hx=collider.halfX+r1,hz=collider.halfZ+r1;if(Math.abs(lx)>=hx||Math.abs(lz)>=hz)continue;
         collisions++;
         const pushX=hx-Math.abs(lx),pushZ=hz-Math.abs(lz);let outX=lx,outZ=lz;if(pushX<pushZ)outX=(lx<0?-1:1)*hx;else outZ=(lz<0?-1:1)*hz;
-        const rcos=Math.cos(frame.rotation),rsin=Math.sin(frame.rotation);pos.x=frame.position.x+outX*rcos-outZ*rsin;pos.z=frame.position.z+outX*rsin+outZ*rcos;
+        const world=this.fromColliderLocal(outX,outZ,frame.rotation);pos.x=frame.position.x+world.x;pos.z=frame.position.z+world.z;
       }
     }
 
@@ -1039,7 +1302,26 @@ export class World {
     }
     return top === null ? null : { top, crate: hit };
   }
-  isWater(position) { return this.hasWater && Math.abs(position.z - 3) < 8.0 && !((Math.abs(position.x + 18) < 5.5) || (Math.abs(position.x - 24) < 5.5)); }
+  // The rainforest's river, plunge pool and lagoon are waded, not blocked: half
+  // movement speed, a routing surcharge in NavGrid, and splashes underfoot.
+  // Every other map keeps the legacy campaign river band.
+  isWater(position) {
+    if(this.map?.id==='wilds'&&this.gameMode==='deathmatch')return wildsIsWater(position.x,position.z);
+    // Candyland's cocoa run, plunge pool and fizz lake wade exactly the same
+    // way — chocolate is simply thicker water.
+    if(this.map?.id==='crown'&&this.gameMode==='deathmatch')return candyIsSyrup(position.x,position.z);
+    return this.hasWater && Math.abs(position.z - 3) < 8.0 && !((Math.abs(position.x + 18) < 5.5) || (Math.abs(position.x - 24) < 5.5));
+  }
+  // Height of the water surface a round detonates on. The legacy river sits at
+  // 0.12; the rainforest's waterline is authored well above zero, so a shot
+  // fired across the lagoon has to stop at the lagoon, not at the mud below it.
+  waterSurfaceY() {
+    if(this.gameMode==='deathmatch'){
+      if(this.map?.id==='wilds')return WILDS.waterY;
+      if(this.map?.id==='crown')return CANDY.syrupY;
+    }
+    return .12;
+  }
   clamp(position) { position.x = THREE.MathUtils.clamp(position.x, -this.bounds, this.bounds); position.z = THREE.MathUtils.clamp(position.z, -this.bounds, this.bounds); }
   seeded(seed) { return () => ((seed = Math.imul(seed, 1664525) + 1013904223 | 0) >>> 0) / 4294967296; }
   dispose() { this.waterMaterial.dispose(); for (const mesh of this.surfaceMeshes || []) mesh.geometry.dispose(); }

@@ -2,7 +2,7 @@ import { MARKETPLACE_COSMETICS } from './marketplaceData.js';
 
 export const TEAM = Object.freeze({ BLUE: 0x2fb4ff, RED: 0xff5062, YELLOW: 0xffd23f, GREEN: 0x59e065 });
 
-// ── Multi-team support (up to 10 player slots) ───────────────────────────────
+// ── Multi-team support (up to 12 player slots) ───────────────────────────────
 export const TEAM_COLORS = Object.freeze([
   { id: 'blue',   name: 'Blue',   color: 0x2fb4ff, dark: 0x11638f },
   { id: 'red',    name: 'Red',    color: 0xff5062, dark: 0x8e2634 },
@@ -14,9 +14,11 @@ export const TEAM_COLORS = Object.freeze([
   { id: 'pink',   name: 'Pink',   color: 0xff6bc5, dark: 0x99306f },
   { id: 'white',  name: 'White',  color: 0xe8ecf2, dark: 0x7c8494 },
   { id: 'slate',  name: 'Slate',  color: 0x8093c9, dark: 0x39415c },
+  { id: 'lime',   name: 'Lime',   color: 0xc4f024, dark: 0x6a8410 },
+  { id: 'rust',   name: 'Rust',   color: 0xc2562f, dark: 0x6b2a13 },
 ]);
-export const MAX_PLAYERS = 10;
-export const DEFAULT_TEAM_NAMES = Object.freeze(['Buddies', 'Raiders', 'Wreckers', 'Bandits', 'Molars', 'Sparks', 'Chompers', 'Vipers', 'Ghosts', 'Loonies']);
+export const MAX_PLAYERS = 12;
+export const DEFAULT_TEAM_NAMES = Object.freeze(['Buddies', 'Raiders', 'Wreckers', 'Bandits', 'Molars', 'Sparks', 'Chompers', 'Vipers', 'Ghosts', 'Loonies', 'Gremlins', 'Rustlers']);
 export function defaultTeamSetup(count = 2) {
   count = Math.max(2, Math.min(MAX_PLAYERS, count));
   return Array.from({ length: count }, (_, i) => ({ name: DEFAULT_TEAM_NAMES[i], colorIndex: i, group: i, uniformIndex: i % 10, isHuman: i === 0 }));

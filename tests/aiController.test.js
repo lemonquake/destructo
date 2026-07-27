@@ -184,7 +184,7 @@ describe('squad attack-move commands',()=>{
     expect(crate.carried).toBe(false);
   });
   it('uses geometry steering and collision feedback instead of walking into a blocker',()=>{
-    const world={navigationDirection:vi.fn(()=>new THREE.Vector3(0,0,1)),isWater:()=>false,resolveCollisions:()=>1,clamp:()=>{},heightAt:()=>0},agent={id:'walker',team:'blue',radius:.72,classDef:{speed:6},group:{position:new THREE.Vector3(),rotation:{y:0}},velocity:new THREE.Vector3(),aim:new THREE.Vector3(1,0,0)};
+    const world={navigationDirection:vi.fn(()=>new THREE.Vector3(0,0,1)),isWater:()=>false,resolveCollisions:()=>1,clamp:()=>{},heightAt:()=>0,groundAt:()=>0},agent={id:'walker',team:'blue',radius:.72,classDef:{speed:6},group:{position:new THREE.Vector3(),rotation:{y:0}},velocity:new THREE.Vector3(),aim:new THREE.Vector3(1,0,0)};
     const ai=new AIController(world,{particles:{}},{},null,null,null,null,null,null,()=>[agent]);ai.moveToward(agent,new THREE.Vector3(10,0,0),.1);
     expect(world.navigationDirection).toHaveBeenCalled();expect(agent.group.position.z).toBeGreaterThan(0);expect(agent.aiCollisionFrames).toBeGreaterThan(0);
   });

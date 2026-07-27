@@ -1,21 +1,21 @@
 export const MAPS = Object.freeze({
   crossroads: Object.freeze({
     id: 'crossroads', title: 'BUMPER-TO-BUMPER BEDLAM', tag: 'URBAN VEHICLE WARFARE',
-    description: 'Raid a vast neon downtown of seven block districts, convoy boulevards, destructible towers and alleys hiding subway vaults and smuggler yards.',
+    description: 'A twelve-district megacity on a real street grid: asphalt boulevards, kerbed pavements, walkable rooftops linked by skybridges, a two-level viaduct interchange, a stadium, a container port and a parking deck you can drive to the roof of.',
     accent: '#ff4fd8', icon: '🏙️', texture: 'asphalt', weather: 'NEON DUSK',
-    maxTeams: 9, sizeClass: 'EPIC', bounds: 234, baseRadius: 194, surfaceScale: 3,
+    maxTeams: 12, sizeClass: 'MEGACITY', bounds: 320, baseRadius: 272, surfaceScale: 1,
   }),
   crown: Object.freeze({
-    id: 'crown', title: 'CRATE EXPECTATIONS', tag: 'KING OF THE HILL',
-    description: 'Storm three fortified mountain rings around an absurdly tall crown. Five armies contest wind-cut passes, buried halls and a relentless summit drop.',
-    accent: '#ffd23f', icon: '⛰️', texture: 'summit_stone', weather: 'HIGH WIND',
-    maxTeams: 5, sizeClass: 'FOCUSED', bounds: 234, baseRadius: 194, surfaceScale: 3,
+    id: 'crown', title: 'CRATE EXPECTATIONS', tag: 'CANDYLAND KING OF THE HILL',
+    description: 'A four-tier layer-cake mountain at the heart of a living candyland. Spiral candy roads and rainbow bridges climb to a relentless summit crate drop, past a chocolate river, a fizzing soda lake, a gingerbread village, cotton-candy woods and a quarry of giant gumballs that roll when you shoot them.',
+    accent: '#ff6bc5', icon: '🍭', texture: 'gumdrop', weather: 'SUGAR RUSH',
+    maxTeams: 5, sizeClass: 'CONFECTION', bounds: 234, baseRadius: 194, surfaceScale: 1,
   }),
   wilds: Object.freeze({
     id: 'wilds', title: 'THE VERY HUNGRY WILDERNESS', tag: 'NEUTRAL MAYHEM',
-    description: 'Hunt through four lost temple complexes, colossal jungle corridors, idol fields, wildlife territory and root-hidden sanctuaries built for nine armies.',
+    description: 'A living rainforest for nine armies: a cliff mesa split by a 26-metre waterfall, a serpent river running to a jaguar lagoon, canopy walkways strung between kapok giants, bamboo terraces, a drowned mire and four lost temples around a ziggurat that eats the unwary.',
     accent: '#71f06f', icon: '🌴', texture: 'jungle_floor', weather: 'MONSOON GLOW',
-    maxTeams: 9, sizeClass: 'EPIC', bounds: 234, baseRadius: 194, surfaceScale: 3,
+    maxTeams: 9, sizeClass: 'EPIC', bounds: 234, baseRadius: 194, surfaceScale: 1,
   }),
   rift: Object.freeze({
     id: 'rift', title: 'FLOOR IS LAVA, PROBABLY', tag: 'VOLCANIC SCRAPYARD',
@@ -30,19 +30,24 @@ export const MAPS = Object.freeze({
 // testable without exposing them on the minimap.
 export const DEATHMATCH_SECRET_PLANS = Object.freeze({
   crossroads: Object.freeze([
-    Object.freeze({ name: 'SUBWAY SIGNAL VAULT', x: -142, z: 92, wall: 'urban_brick', cache: 'neon_concrete', reward: 'blue' }),
-    Object.freeze({ name: 'ROOFTOP SMUGGLER YARD', x: 137, z: -96, wall: 'corrugated_steel', cache: 'city_glass', reward: 'yellow' }),
-    Object.freeze({ name: 'FLOODED UNDERPASS CACHE', x: -18, z: -148, wall: 'concrete', cache: 'vehicle_metal', reward: 'red' }),
+    Object.freeze({ name: 'SUBWAY SIGNAL VAULT', x: -56, z: 208, wall: 'urban_brick', cache: 'neon_concrete', reward: 'blue' }),
+    Object.freeze({ name: 'ROOFTOP SMUGGLER YARD', x: 56, z: -208, wall: 'corrugated_steel', cache: 'city_glass', reward: 'yellow' }),
+    Object.freeze({ name: 'FLOODED UNDERPASS CACHE', x: -208, z: -56, wall: 'concrete', cache: 'vehicle_metal', reward: 'red' }),
   ]),
+  // Sited in the gaps between candyland's authored districts (see CANDY in
+  // src/data/mapSurfaces.js): north of Flosswood, west of the Peppermint Mesa,
+  // and on the dry shelf east of the cocoa run.
   crown: Object.freeze([
-    Object.freeze({ name: 'PILGRIM CRYPT', x: -132, z: 78, wall: 'summit_stone', cache: 'marble', reward: 'blue' }),
-    Object.freeze({ name: 'WIND-CUT HERMITAGE', x: 128, z: 84, wall: 'stone', cache: 'summit_stone', reward: 'yellow' }),
-    Object.freeze({ name: 'BURIED CORONATION HALL', x: 14, z: -146, wall: 'sandstone', cache: 'marble', reward: 'red' }),
+    Object.freeze({ name: 'THE FONDANT CRYPT', x: -52, z: 160, wall: 'gingerbread', cache: 'gumdrop', reward: 'blue' }),
+    Object.freeze({ name: 'SUGARGLASS HERMITAGE', x: -172, z: -72, wall: 'peppermint', cache: 'wafer', reward: 'yellow' }),
+    Object.freeze({ name: 'THE BURIED BONBON HOARD', x: 150, z: -24, wall: 'chocolate', cache: 'caramel', reward: 'red' }),
   ]),
+  // Sited clear of the authored rainforest landforms in src/data/mapSurfaces.js:
+  // west of the mesa skirt, east of the bamboo terraces, and south of the mire.
   wilds: Object.freeze([
-    Object.freeze({ name: 'JAGUAR IDOL HOLLOW', x: -136, z: 74, wall: 'moss_stone', cache: 'sandstone', reward: 'blue' }),
-    Object.freeze({ name: 'ROOTBOUND MOON WELL', x: 132, z: 82, wall: 'tree_bark', cache: 'crystal', reward: 'red' }),
-    Object.freeze({ name: 'LOST EXPEDITION CAMP', x: 18, z: -148, wall: 'wood', cache: 'corrugated_steel', reward: 'yellow' }),
+    Object.freeze({ name: 'JAGUAR IDOL HOLLOW', x: -146, z: 26, wall: 'moss_stone', cache: 'sandstone', reward: 'blue' }),
+    Object.freeze({ name: 'ROOTBOUND MOON WELL', x: 140, z: 44, wall: 'tree_bark', cache: 'crystal', reward: 'red' }),
+    Object.freeze({ name: 'LOST EXPEDITION CAMP', x: 10, z: -152, wall: 'wood', cache: 'corrugated_steel', reward: 'yellow' }),
   ]),
   rift: Object.freeze([
     Object.freeze({ name: 'COOLANT TUNNEL 09', x: -138, z: 76, wall: 'vehicle_metal', cache: 'crystal', reward: 'blue' }),
@@ -55,17 +60,17 @@ export const DOMINATION_MAPS = Object.freeze({
   sunken: Object.freeze({
     id: 'sunken', mode: 'domination', title: 'THE SUNKEN CROWN', tag: 'FLOODED TEMPLE CITY',
     description: 'Five towers crown a drowned jungle capital: a stepped sun temple, twin vine bridges, flooded courts, and ambush paths beneath colossal roots.',
-    accent: '#4dffc3', icon: '☀️', texture: 'moss_stone', weather: 'GOLDEN MONSOON', towerCount: 5,
+    accent: '#4dffc3', icon: '☀️', texture: 'moss_stone', weather: 'GOLDEN MONSOON', towerCount: 5, maxTeams: 10,
   }),
   serpent: Object.freeze({
     id: 'serpent', mode: 'domination', title: 'SPINE OF THE SERPENT', tag: 'RIDGELINE WAR',
     description: 'Seven towers snake across a mountainous idol ridge, with cliff temples, rope-bridge lanes, hidden jungle gullies, and a giant stone serpent arena.',
-    accent: '#d7ff43', icon: '🐍', texture: 'jungle_floor', weather: 'THUNDER CANOPY', towerCount: 7,
+    accent: '#d7ff43', icon: '🐍', texture: 'jungle_floor', weather: 'THUNDER CANOPY', towerCount: 7, maxTeams: 10,
   }),
   eclipse: Object.freeze({
     id: 'eclipse', mode: 'domination', title: 'ECLIPSE OF TITANS', tag: 'COLOSSAL LOST SANCTUM',
     description: 'Five monumental capture shrines surround an eclipse altar, ringed by titan statues, terraced temple walls, waterfalls, caves, and high jungle causeways.',
-    accent: '#bd7bff', icon: '🌘', texture: 'root_mud', weather: 'VIOLET ECLIPSE', towerCount: 5,
+    accent: '#bd7bff', icon: '🌘', texture: 'root_mud', weather: 'VIOLET ECLIPSE', towerCount: 5, maxTeams: 10,
   }),
 });
 

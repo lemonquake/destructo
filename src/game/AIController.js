@@ -130,8 +130,8 @@ export class AIController {
       // status effects gate everything on foot, including domination duties
       if (agent.freeze > 0) { agent.freeze -= dt; return; }
       // a medic pumping a heal tether plants its feet so the wires don't snap
-      if (agent.healPumping) { agent.velocity.multiplyScalar(Math.pow(.02, dt)); this.settle(agent); return; }
-      if (agent.stun > 0) { agent.stun -= dt; agent.group.position.addScaledVector(agent.velocity, dt); agent.velocity.multiplyScalar(Math.pow(.12, dt)); this.settle(agent); return; }
+      if (agent.healPumping) { agent.velocity.multiplyScalar(Math.pow(.02, dt)); this.settle(agent, dt); return; }
+      if (agent.stun > 0) { agent.stun -= dt; agent.group.position.addScaledVector(agent.velocity, dt); agent.velocity.multiplyScalar(Math.pow(.12, dt)); this.settle(agent, dt); return; }
     }
     // Once a primary is emptied and discarded, replenishing ammo/replacing it
     // outranks combat. The infinite pistol keeps the Destructo defensible while
@@ -166,7 +166,7 @@ export class AIController {
         const candidates=(this.world.dominationTowers||[]).filter(t=>!t.ownerTeam||this.isHostile(agent.team,t.ownerTeam));
         agent.dominationTarget=candidates.sort((a,b)=>a.position.distanceToSquared(agent.group.position)-b.position.distanceToSquared(agent.group.position))[0]||null;
       }
-      const tower=agent.dominationTarget;if(tower){if(tower.position.distanceToSquared(agent.group.position)>tower.radius*tower.radius*.45)this.moveToward(agent,tower.position,dt,1.08);else this.settle(agent);return;}
+      const tower=agent.dominationTarget;if(tower){if(tower.position.distanceToSquared(agent.group.position)>tower.radius*tower.radius*.45)this.moveToward(agent,tower.position,dt,1.08);else this.settle(agent, dt);return;}
     }
 
     const targetTeam=this.chooseTargetTeam(agent.team),focused=targetTeam?foes.filter(f=>f.team===targetTeam):foes;
@@ -310,7 +310,7 @@ export class AIController {
     this.dropCrate(agent);
     if (patient.group.position.distanceToSquared(agent.group.position) < HEAL_HOLD_RANGE * HEAL_HOLD_RANGE) {
       agent.velocity.multiplyScalar(Math.pow(.05, dt));
-      this.settle(agent);
+      this.settle(agent, dt);
       return true;
     }
     this.moveToward(agent, patient.group.position, dt, 1.12);
@@ -355,7 +355,7 @@ export class AIController {
     if (agent.group.position.distanceToSquared(point) < 2.6 * 2.6) {
       if (!agent.commandArrived) { agent.commandArrived = true; agent.commandTimer = Math.min(agent.commandTimer, 9); }
       agent.velocity.multiplyScalar(Math.pow(.05, dt));
-      this.settle(agent);
+      this.settle(agent, dt);
       return true;
     }
     this.moveToward(agent, point, dt, 1.12);
@@ -383,7 +383,7 @@ export class AIController {
     const loneSurvivor=this.getTeamUnits(agent.team).filter(u=>!u.dead).length===1;
     if(agent.mountedTurret||agent.mountedBunker){const emplacement=agent.mountedTurret||agent.mountedBunker,range=emplacement.weapon?.effectiveRange||agent.weapon?.effectiveRange||30,canHold=loneSurvivor&&target&&emplacement.group?.position&&target.group.position.distanceToSquared(emplacement.group.position)<=range*range;if(canHold)return this.useInteractive(agent,dt,targets);this.interact?.exit?.(agent,true);agent.aiMoveGoal=null;agent.aiStuckTimer=0;return;}
     if(agent.mountedMotorcycle)return this.useInteractive(agent,dt,targets);
-    if(!target){brain.targetTeam=null;brain.reassessIn=0;agent.aiMoveGoal=null;this.settle(agent);return;}
+    if(!target){brain.targetTeam=null;brain.reassessIn=0;agent.aiMoveGoal=null;this.settle(agent, dt);return;}
     brain.targetTeam=target.team;
     return this.engage(agent,dt,target,null,Infinity,false,1.3);
   }
@@ -419,7 +419,7 @@ export class AIController {
     const m=agent.mountedMotorcycle;if(!m||m.dead)return this.interact?.exit?.(agent,true);const isDriver=m.driver===agent;if(isDriver){if(target){const aim=this.combat.ballisticDirectionFor?.(m,target)||target.group.position.clone().add(new THREE.Vector3(0,1,0)).sub(m.group.position).normalize(),dir=aim.clone().setY(0).normalize(),dist=target.group.position.distanceTo(m.group.position),weaponRange=m.weapon?.effectiveRange||30;if((m.aiCollisionFrames||0)>3){m.aiRecoveryTimer=1.35;m.aiRecoverySide=(m.aiRecoverySide||1)*-1;m.aiCollisionFrames=0;}if((m.aiRecoveryTimer||0)>0){m.aiRecoveryTimer=Math.max(0,m.aiRecoveryTimer-dt);dir.applyAxisAngle(this.up,m.aiRecoverySide*Math.PI*.42);}m.aiDirection=this.world.navigationDirection?.(m.group.position,dir,m.radius||2,5.5,m,m.aiRecoverySide||1)||dir;const desired=this.isStructure(target)?Math.max((target.radius||4)+(m.radius||2)+2.5,Math.min(weaponRange*.72,weaponRange-4)):12;m.throttle=dist>desired+2?1:dist<desired-2?-.35:0;if(m.vehicleKind==='tank'||m.vehicleKind==='apc'||m.turret){m.aim.lerp(aim,.18).normalize();const yaw=Math.atan2(m.aim.x,m.aim.z),pitch=THREE.MathUtils.clamp(Math.asin(m.aim.y),THREE.MathUtils.degToRad(-20),THREE.MathUtils.degToRad(40));if(m.turret)m.turret.rotation.y=yaw-m.group.rotation.y;for(const barrel of m.barrels||[])barrel.rotation.x=Math.PI/2-pitch;m.fireCooldown=Math.max(0,m.fireCooldown-dt);if(dist<weaponRange)this.combat.shoot(m,m.aim)}}else{m.throttle=0;m.velocity?.multiplyScalar(Math.pow(.18,dt))}}else if(target&&m.type==='motorcycle'){agent.aim.lerp(this.combat.ballisticDirectionFor?.(agent,target)||target.group.position.clone().add(new THREE.Vector3(0,1,0)).sub(agent.group.position).normalize(),.22).normalize();this.combat.shoot(agent,agent.aim)}
   }
   bodyguard(agent, dt, foes) {
-    const leader = this.getBodyguard(agent.team); if (!leader || leader.dead) return this.settle(agent);
+    const leader = this.getBodyguard(agent.team); if (!leader || leader.dead) return this.settle(agent, dt);
     agent.patrolPoint = null; agent.commandPoint = null;
     this.dropCrate(agent);
     const nearby = foes.filter(f => f.group.position.distanceToSquared(leader.group.position) < 18 * 18);
@@ -456,7 +456,7 @@ export class AIController {
     this.moveToward(agent, escape, dt, 1.35 * this.difficulty().speed);
   }
   kamikaze(agent, dt, target) {
-    if (!target) return this.settle(agent);
+    if (!target) return this.settle(agent, dt);
     this.engage(agent, dt, target, null, Infinity, true);
   }
   fieldScavenge(agent, dt) {
@@ -519,7 +519,7 @@ export class AIController {
     this.move(agent, dt);
   }
   assaultBase(agent,dt,base){
-    if(!base||base.dead)return this.settle(agent);agent.aiTarget=base;const tuning=this.difficulty(),dist=base.group.position.distanceTo(agent.group.position);
+    if(!base||base.dead)return this.settle(agent, dt);agent.aiTarget=base;const tuning=this.difficulty(),dist=base.group.position.distanceTo(agent.group.position);
     const band=this.standoffFor(agent,base),hash=[...String(agent.id)].reduce((s,c)=>s+c.charCodeAt(0),0),angle=hash*.73+(agent.aiFlankRevision||0)*.9;
     const slot=base.group.position.clone().add(new THREE.Vector3(Math.sin(angle)*band.desired,0,Math.cos(angle)*band.desired));slot.y=this.world.groundAt(slot);
     const aim=base.group.position.clone().add(new THREE.Vector3(0,1.5,0)).sub(agent.group.position).normalize();agent.aim.lerp(aim,tuning.aim).normalize();agent.group.rotation.y=Math.atan2(agent.aim.x,agent.aim.z);
@@ -530,7 +530,7 @@ export class AIController {
     return this.moveToward(agent,slot,dt,1.08*tuning.speed);
   }
   engage(agent, dt, target, leashCenter = null, leash = Infinity, kamikaze = false, speedBoost = 1) {
-    if (!target) { agent.aiTarget=null;this.settle(agent); return; }
+    if (!target) { agent.aiTarget=null;this.settle(agent, dt); return; }
     agent.aiTarget=target;
     if (leashCenter && target.group.position.distanceTo(leashCenter) > leash) { this.moveToward(agent,leashCenter,dt,.85); return; }
     const tuning = this.difficulty();
@@ -594,7 +594,7 @@ export class AIController {
     return path[0];
   }
   moveToward(agent, point, dt, speedScale = 1) {
-    const dir=point.clone().sub(agent.group.position).setY(0),distance=dir.length();if(distance<.14){agent.velocity.multiplyScalar(Math.pow(.04,dt));this.settle(agent);return}
+    const dir=point.clone().sub(agent.group.position).setY(0),distance=dir.length();if(distance<.14){agent.velocity.multiplyScalar(Math.pow(.04,dt));this.settle(agent, dt);return}
     const waypoint=this.navTarget(agent,point,dt,distance);
     dir.copy(waypoint).sub(agent.group.position).setY(0);if(dir.lengthSq()<1e-6)dir.set(0,0,1);dir.normalize();
     // stuck detection tracks progress toward the FINAL goal, not the waypoint
@@ -608,7 +608,19 @@ export class AIController {
     const separation=new THREE.Vector3();for(const ally of this.getTeamUnits(agent.team)){if(ally===agent||ally.dead)continue;const away=agent.group.position.clone().sub(ally.group.position).setY(0),d=away.length();if(d>0&&d<2.4)separation.addScaledVector(away.normalize(),(2.4-d)/2.4);}
     if(separation.lengthSq()>.001)dir.addScaledVector(separation.normalize(),.7).normalize();const preferred=agent.aiRecoverySide||1,steered=this.world.navigationDirection?.(agent.group.position,dir,agent.radius||.72,Math.min(4,Math.max(2,(agent.classDef?.speed||agent.speed||6)*.55)),agent,preferred)||dir;agent.aim.lerp(steered,.22).normalize();agent.group.rotation.y=Math.atan2(agent.aim.x,agent.aim.z);const pace=(agent.passive?.id==='swift'?1.15:1)*((agent.paceAura||0)>0?1.08:1);agent.velocity.lerp(steered.multiplyScalar((agent.classDef?.speed||agent.speed||0)*speedScale*pace),Math.min(1,dt*5));this.move(agent,dt);
   }
-  move(agent, dt) { const drag=this.world.isWater(agent.group.position) ? .5 : 1;agent.group.position.addScaledVector(agent.velocity,dt*drag);const collisions=this.world.resolveCollisions(agent)||0;if(collisions){agent.aiCollisionFrames=Math.min(12,(agent.aiCollisionFrames||0)+2);agent.velocity.multiplyScalar(.55);}this.world.clamp(agent.group.position);this.settle(agent);if(this.world.isWater(agent.group.position)&&agent.velocity.lengthSq()>.5){agent.waterWalkTimer=(agent.waterWalkTimer||0)-dt;if(agent.waterWalkTimer<=0){this.combat.particles.waterSplash(agent.group.position,2,4,.5);agent.waterWalkTimer=.35+Math.random()*.1}} }
-  settle(agent) { if(agent.stationary)return;const g=this.world.heightAt(agent.group.position.x,agent.group.position.z);agent.group.position.y=g;agent.groundY=g; }
+  move(agent, dt) { const drag=this.world.isWater(agent.group.position) ? .5 : 1;agent.group.position.addScaledVector(agent.velocity,dt*drag);const collisions=this.world.resolveCollisions(agent)||0;if(collisions){agent.aiCollisionFrames=Math.min(12,(agent.aiCollisionFrames||0)+2);agent.velocity.multiplyScalar(.55);}this.world.clamp(agent.group.position);this.settle(agent, dt);if(this.world.isWater(agent.group.position)&&agent.velocity.lengthSq()>.5){agent.waterWalkTimer=(agent.waterWalkTimer||0)-dt;if(agent.waterWalkTimer<=0){this.combat.particles.waterSplash(agent.group.position,2,4,.5);agent.waterWalkTimer=.35+Math.random()*.1}} }
+  // Snap an agent onto whatever it is standing on — terrain, a pavement slab, a
+  // ramp or a deck. Stepping off a ledge is played out as a short fall instead
+  // of a teleport, so agents that use the city's ramps still read as physical.
+  settle(agent, dt = 0) {
+    if(agent.stationary)return;
+    const position=agent.group.position,ground=this.world.groundAt(position);
+    if(dt>0&&ground<position.y-.12){
+      agent.fallSpeed=Math.min(38,(agent.fallSpeed||0)+62*dt);
+      position.y=Math.max(ground,position.y-agent.fallSpeed*dt);
+      if(position.y<=ground)agent.fallSpeed=0;
+    }else{agent.fallSpeed=0;position.y=ground}
+    agent.groundY=position.y;
+  }
   closest(agent, list) { let best=null,dist=Infinity;for(const t of list){if(!t||t.dead)continue;const d=t.group.position.distanceToSquared(agent.group.position);if(d<dist){dist=d;best=t}}return best; }
 }

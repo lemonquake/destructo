@@ -9,7 +9,7 @@
 
 import { TEAM_COLORS, MAX_PLAYERS, CLASSES, WEAPONS, normalizeAllianceGroups, allianceSummary } from '../../data/gameData.js';
 import { ALL_MAPS, mapsForMode } from '../../data/maps.js';
-import { SKIN_TEXTURES, paintSkinPreview } from '../Materials.js';
+import { SKIN_TEXTURES, paintSkinPreview, MAP_PREVIEW_PAINTERS, paintMapPreview } from '../Materials.js';
 import { CAPTURE_SECONDS } from '../DominationSystem.js';
 
 const escapeHtml = value => String(value).replace(/[&<>'"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[c]));
@@ -89,9 +89,15 @@ export class SquadSetupPanel {
     const teams = this.game.setup.length;
     return mapsForMode(this.modeId).map(map => {
       const seats = map.maxTeams || MAX_PLAYERS;
+      // Most battlefields show their signature texture asset. Candyland has no
+      // raster asset — its entire surface is painted at runtime — so it paints
+      // its own card instead, through the shell's existing `paint` hook.
+      const painted = Boolean(MAP_PREVIEW_PAINTERS[map.id]);
       return {
         id: map.id, title: map.title, tag: map.tag, description: map.description,
-        icon: map.icon, accent: map.accent, art: `/assets/textures/maps/${map.texture}.webp`,
+        icon: map.icon, accent: map.accent,
+        art: painted ? null : `/assets/textures/maps/${map.texture}.webp`,
+        paint: painted ? canvas => paintMapPreview(canvas, map.id) : null,
         warning: teams > seats ? `SEATS ${seats} · YOU HAVE ${teams} TEAMS` : null,
         meta: `${map.weather}${map.towerCount ? ` · ${map.towerCount} TOWERS` : ` · ${map.sizeClass}`}`,
         facts: [

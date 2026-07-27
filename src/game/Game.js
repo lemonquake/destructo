@@ -488,6 +488,13 @@ export class Game{
     this.teamMap=Object.fromEntries(this.teams.map(t=>[t.id,t]));this.playerTeam=this.teams[humanIndex>=0?humanIndex:0].id;
     this.factory.setTeams(this.teamMap);this.hud.teamMeta=id=>this.teamMap[id];
     this.addLights();this.world=new World(this.scene,this.materials,this.factory,isCampaign?this.mission.mapId:this.selectedMap,this.gameMode).build(this.teams);this.discoveredSecrets=new Set();
+    // The default sky-bounce is grass-green. On a city everything in shade —
+    // the underside of the viaduct, alley walls, roof overhangs — picks that up
+    // and reads as mouldy, so Bedlam bounces cool concrete instead.
+    if(this.hemisphere&&this.world.map.id==='crossroads')this.hemisphere.groundColor.setHex(0x4a4f63);
+    // …and in the rainforest everything in shade is under a canopy, so the
+    // bounce goes the other way: deep leaf-green instead of the default turf.
+    if(this.hemisphere&&this.world.map.id==='wilds'&&this.gameMode==='deathmatch')this.hemisphere.groundColor.setHex(0x2c5a34);
     if(isCampaign&&this.mission.id==='gold-rush'){const enemyFactory=this.world.factories[this.teams.find(t=>t.id!==this.playerTeam).id];enemyFactory.invulnerable=true;enemyFactory.hp=enemyFactory.maxHp=99999;}
     if(isCampaign&&this.mission.rules?.playerBaseInvulnerable){const home=this.world.factories[this.playerTeam];home.invulnerable=true;home.hp=home.maxHp=99999;}
     if(this.gameMode==='domination')for(const factory of Object.values(this.world.factories)){factory.invulnerable=true;factory.group.traverse(o=>{if(o.isMesh)o.material?.emissive?.setHex?.(this.teamMap[factory.team]?.dark||0x111111)});}
@@ -633,7 +640,7 @@ export class Game{
     if(!this.campaignActive||['campaign_complete','campaign_failed'].includes(this.state))return;const reward=won?this.mission.reward+this.kills*35:Math.floor(this.kills*12);this.save.recordMission(won,this.kills,reward);if(won)this.save.completeCampaignMission(this.mission.id);if(won){this.campaignVictoryHero=this.player&&!this.player.dead?this.player:this.livingUnits(this.playerTeam)[0];if(this.campaignVictoryHero)this.campaignVictoryHero.state='victory';this.campaignVictoryAngle=0}this.endRuntime();document.exitPointerLock?.();this.state=won?'campaign_complete':'campaign_failed';if(won){this.audio.playMusic('/music/battle_win.mp3',false);this.screen.innerHTML=`<main class="campaign-result accomplished"><div class="victory-rays"></div><div class="confetti">${'<i></i>'.repeat(36)}</div><span class="eyebrow">${this.mission.name.toUpperCase()}</span><h2>MISSION<br>ACCOMPLISHED</h2><p>Major Rivet is pretending this was the plan all along.</p><div class="stat-row"><div><strong>${this.kills}</strong><span>ENEMIES WRECKED</span></div><div><strong>${reward}</strong><span>CHIPS</span></div></div><div class="menu-actions"><button class="btn mission-btn" data-action="missions">CONTINUE CAMPAIGN</button><button class="btn" data-action="menu">MAIN MENU</button></div></main>`}else{this.audio.playMusic('/music/battle_lost.mp3',false);this.screen.innerHTML=`<main class="campaign-result failed"><span class="eyebrow">OPERATION INTERRUPTED</span><h2>MISSION FAILED</h2><p>${escapeHtml(reason)}</p><div class="menu-actions"><button class="btn primary" data-action="mission:${this.mission.id}">RETRY MISSION</button><button class="btn" data-action="missions">MISSION SELECT</button></div></main>`}
   }
   updateCampaignCelebration(dt){const hero=this.campaignVictoryHero;if(!hero)return;this.campaignVictoryAngle=(this.campaignVictoryAngle||0)+dt*.5;this.factory?.animateUnit?.(hero,performance.now()/1000,dt);const focus=hero.group.position.clone().add(new THREE.Vector3(0,1.2,0)),desired=focus.clone().add(new THREE.Vector3(Math.sin(this.campaignVictoryAngle)*6,3.2,Math.cos(this.campaignVictoryAngle)*6));this.camera.position.lerp(desired,1-Math.pow(.002,dt));this.camera.lookAt(focus)}
-  addLights(){const hemi=new THREE.HemisphereLight(0xd8f0ff,0x3f5a36,.95);this.scene.add(hemi);const sun=new THREE.DirectionalLight(0xfff6d8,1.7);sun.position.set(-45,78,-35);sun.castShadow=true;sun.shadow.mapSize.set(1536,1536);sun.shadow.camera.left=sun.shadow.camera.bottom=-78;sun.shadow.camera.right=sun.shadow.camera.top=78;sun.shadow.camera.near=.5;sun.shadow.camera.far=210;sun.shadow.bias=-.0008;this.sun=sun;this.scene.add(sun);this.scene.add(sun.target)}
+  addLights(){const hemi=new THREE.HemisphereLight(0xd8f0ff,0x3f5a36,.95);this.hemisphere=hemi;this.scene.add(hemi);const sun=new THREE.DirectionalLight(0xfff6d8,1.7);sun.position.set(-45,78,-35);sun.castShadow=true;sun.shadow.mapSize.set(1536,1536);sun.shadow.camera.left=sun.shadow.camera.bottom=-78;sun.shadow.camera.right=sun.shadow.camera.top=78;sun.shadow.camera.near=.5;sun.shadow.camera.far=210;sun.shadow.bias=-.0008;this.sun=sun;this.scene.add(sun);this.scene.add(sun.target)}
   configureModeUnit(unit){if(this.gameMode!=='domination')return unit;this.equipPrimaryWeapon(unit,DOMINATION_RULES.weaponId,WEAPONS[DOMINATION_RULES.weaponId],this.matchRules?.startingAmmo??90,0);return unit}
   addUnit(classId,team,pos,opts={}){const cosmetics=!this.observerOnly&&team===this.playerTeam?this.teamCosmetics():{};const modeClass=this.gameMode==='domination'?DOMINATION_RULES.classId:classId;const unit=this.factory.createUnit(modeClass,team,pos,false,{...cosmetics,skin:this.teamMap[team]?.uniform,...opts});this.configureModeUnit(unit);unit.groundY=this.world.groundAt(unit.group.position);unit.ammo=this.debugAmmoFor(unit,this.matchRules?.startingAmmo??90);this.combatants.push(unit);this._combatantIndexDirty=true;this.entities.push(unit);this.recordDestructoCreated(unit);return unit}
   update(dt,time){
@@ -1491,6 +1498,11 @@ export class Game{
         }
       }
     }
+    // A destructible may author its own reaction to being shot. Candyland's
+    // giant gumballs turn the hit into a roll and its candies change colour;
+    // anything else that wants a bespoke response can hang one here without
+    // this method having to know what a gumball is.
+    target.onHit?.(amount,source,direction,explosive);
     const kind=target===this.player?'hurt-player':this.hostile(this.playerTeam,target.team)?'hurt-enemy':target.team?'hurt-ally':'hurt';
     this.spawnDamageNumber(target.group.position,String(Math.max(1,Math.round(amount))),kind);
     // Play hit sound spatially

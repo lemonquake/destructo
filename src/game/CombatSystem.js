@@ -15,6 +15,10 @@ const STYLE_NAMES=Object.keys(PROJECTILE_GEOS),DETAIL_STYLES=new Set(['grenade',
 const STYLE_LENGTHS={slug:.18,dart:.4,lance:.55,tracer:.28,grenade:.34,pellet:.11,bolt:.2,mine:.1,rocket:.52,missile:.52,arc:.33,plasma:.34,tank_shell_brown:.65,tank_shell_yellow:.45,tank_shell_blue:.45,tank_shell_red:.65};
 const WORLD_GRAVITY=18,POWER_REFERENCE=50,POOL_SIZE=2048,MINE_POOL_SIZE=256,DETAIL_POOL_SIZE=128,SPATIAL_CELL=8;
 export const PROJECTILE_SPREAD_SCALE=.7;
+// How far above itself a projectile may claim a surface as its floor. A body
+// with legs gets World.STEP_UP here so it can mount a kerb; a bullet gets almost
+// nothing, or it detonates against the underside of every deck it flies beneath.
+export const PROJECTILE_FLOOR_SLACK=.05;
 export const ballisticGravity=weapon=>weapon?.ballistic===false||weapon?.mine?0:WORLD_GRAVITY*(POWER_REFERENCE/Math.max(1,weapon?.shotPower||POWER_REFERENCE));
 
 function solveAt(origin,target,weapon){
@@ -43,9 +47,13 @@ export class CombatSystem {
     this.detailPool=[];for(let i=0;i<DETAIL_POOL_SIZE;i++){const mesh=createProjectileRig();mesh.visible=false;scene.add(mesh);this.detailPool.push({mesh,active:false})}
   }
   setWorld(world){this.world=world;return this}
-  ground(x,z){return this.world?.groundAt?this.world.groundAt({x,z}):this.heightAt?this.heightAt(x,z):0}
+  // `referenceY` is the height of whatever is asking. Without it the world
+  // reports the highest walkable surface over this column — which under a
+  // viaduct or a rooftop is the deck overhead, so a bullet fired down the
+  // street would detonate against a "floor" fourteen metres above its head.
+  ground(x,z,referenceY){return this.world?.groundAt?this.world.groundAt({x,z},referenceY,PROJECTILE_FLOOR_SLACK):this.heightAt?this.heightAt(x,z):0}
   surfaceAt(position){return this.world?.surfaceAt?.(position)||'dirt'}
-  projectileFloor(position){return this.world?.isWater?.(position) ? .12 : this.ground(position.x,position.z)}
+  projectileFloor(position,referenceY=position.y){return this.world?.isWater?.(position) ? (this.world.waterSurfaceY?.() ?? .12) : this.ground(position.x,position.z,referenceY)}
   canHit(shooter,target){return target.type==='prop'||target.team==='neutral'||shooter.team==='neutral'||this.isHostile(shooter.team,target.team)}
   muzzleAnchors(shooter){return (shooter?.muzzleAnchors||[]).filter(anchor=>anchor?.getWorldPosition)}
   muzzlePosition(shooter,index=0,out=new THREE.Vector3()){
@@ -73,7 +81,7 @@ export class CombatSystem {
   spawn(shooter,direction,w,muzzleIndex=0){
     const equippedProj=shooter.projectileStyle;if(equippedProj){const cosmetic=MARKETPLACE_COSMETICS.find(item=>item.id===equippedProj&&item.kind==='projectile'),model=cosmetic?.visual?.model,style={laser:'lance',plasma:'plasma',pellet:'pellet',bolt:'bolt',comet:'plasma',heart:'bolt'}[model]||'tracer';w={...w,projectileStyle:style,color:cosmetic?.visual?.primary||w.color}}
     const slot=(w.mine?this.freeMineSlots:this.freeSlots).pop();if(slot===undefined){this.projectileSpawnDenied++;return null}const p=this.pool[slot];p.active=true;this.activeSlots.add(slot);p.shooter=shooter;p.weapon=w;p.age=0;p.trailTimer=0;p.mine=Boolean(w.mine);p.maxAge=p.mine?12:Infinity;p.style=w.projectileStyle||'slug';p.scale=w.projectileScale||1;p.detail=null;if(p.mine)this.activeMines++;else this.activeCount++;
-    p.position.copy(this.muzzlePosition(shooter,muzzleIndex,p.position));if(p.mine){p.position.y=this.ground(p.position.x,p.position.z)+.12;p.velocity.set(0,0,0);p.scale*=2.2}else{const speed=w.bulletSpeed||0,spread=(w.spread||0)*PROJECTILE_SPREAD_SCALE;p.velocity.copy(direction).normalize();
+    p.position.copy(this.muzzlePosition(shooter,muzzleIndex,p.position));if(p.mine){p.position.y=this.ground(p.position.x,p.position.z,p.position.y)+.12;p.velocity.set(0,0,0);p.scale*=2.2}else{const speed=w.bulletSpeed||0,spread=(w.spread||0)*PROJECTILE_SPREAD_SCALE;p.velocity.copy(direction).normalize();
       // spread is a cone half-angle in radians applied perpendicular to the shot —
       // never scaled by bullet speed, so the round always converges on the aim point
       if(spread>0){const axis=Math.abs(p.velocity.y)>.99?this._spreadAxis.set(1,0,0):this._spreadAxis.set(0,1,0),right=this._spreadRight.crossVectors(p.velocity,axis).normalize(),up=this._spreadUp.crossVectors(right,p.velocity).normalize(),theta=Math.random()*Math.PI*2,radius=Math.tan(spread)*Math.sqrt(Math.random());p.velocity.addScaledVector(right,Math.cos(theta)*radius).addScaledVector(up,Math.sin(theta)*radius)}
@@ -83,11 +91,51 @@ export class CombatSystem {
   rebuildSpatialHash(){this.hash.clear();const targets=new Set([...(this.getTargets?.()||[]),...(this.getImpulseTargets?.()||[])]);for(const target of targets){if(!target?.group||target.dead||target.carried||target.placed)continue;const p=target.group.position,key=`${Math.floor(p.x/SPATIAL_CELL)},${Math.floor(p.z/SPATIAL_CELL)}`;let cell=this.hash.get(key);if(!cell){cell=[];this.hash.set(key,cell)}cell.push(target)}}
   candidatesFor(start,end,padding=2){this._candidateSet.clear();const minX=Math.floor((Math.min(start.x,end.x)-padding)/SPATIAL_CELL),maxX=Math.floor((Math.max(start.x,end.x)+padding)/SPATIAL_CELL),minZ=Math.floor((Math.min(start.z,end.z)-padding)/SPATIAL_CELL),maxZ=Math.floor((Math.max(start.z,end.z)+padding)/SPATIAL_CELL);for(let x=minX;x<=maxX;x++)for(let z=minZ;z<=maxZ;z++){const cell=this.hash.get(`${x},${z}`);if(cell)for(const target of cell)this._candidateSet.add(target)}return this._candidateSet}
   segmentSphere(start,end,center,radius){const d=end.clone().sub(start),m=start.clone().sub(center),a=d.lengthSq();if(a<1e-10)return m.lengthSq()<=radius*radius?0:null;const b=m.dot(d),c=m.lengthSq()-radius*radius;if(c<=0)return 0;const disc=b*b-a*c;if(disc<0)return null;const t=(-b-Math.sqrt(disc))/a;return t>=0&&t<=1?t:null}
-  colliderHit(start,end,collider){if(!collider?.enabled||collider.entity?.dead)return null;const frame=this.world.colliderFrame(collider),d=end.clone().sub(start),toLocal=point=>{const dx=point.x-frame.position.x,dz=point.z-frame.position.z,cos=Math.cos(-frame.rotation),sin=Math.sin(-frame.rotation);return new THREE.Vector3(dx*cos-dz*sin,point.y-frame.position.y,dx*sin+dz*cos)},a=toLocal(start),b=toLocal(end),v=b.clone().sub(a),minY=-.2,maxY=collider.top+.15;
+  colliderHit(start,end,collider){
+    if(!collider?.enabled||collider.entity?.dead)return null;
+    const frame=this.world.colliderFrame(collider);
+    // Same world→local convention as World.toColliderLocal. The negated form
+    // mirrors every rotated collider, so shots pass through one side of an
+    // angled wall and stop against thin air on the other.
+    const toLocal=point=>{const local=this.world.toColliderLocal(point.x-frame.position.x,point.z-frame.position.z,frame.rotation);return new THREE.Vector3(local.x,point.y-frame.position.y,local.z)};
+    const a=toLocal(start),b=toLocal(end),v=b.clone().sub(a),minY=-.2,maxY=collider.top+.15;
     if(collider.shape==='cylinder'){const A=v.x*v.x+v.z*v.z,B=2*(a.x*v.x+a.z*v.z),C=a.x*a.x+a.z*a.z-collider.radius*collider.radius,disc=B*B-4*A*C;if(A<1e-9||disc<0)return null;for(const t of [(-B-Math.sqrt(disc))/(2*A),(-B+Math.sqrt(disc))/(2*A)])if(t>=0&&t<=1){const y=a.y+v.y*t;if(y>=minY&&y<=maxY)return t}return null}
-    let near=0,far=1;for(const [origin,delta,min,max] of [[a.x,v.x,-collider.halfX,collider.halfX],[a.y,v.y,minY,maxY],[a.z,v.z,-collider.halfZ,collider.halfZ]]){if(Math.abs(delta)<1e-9){if(origin<min||origin>max)return null;continue}let t1=(min-origin)/delta,t2=(max-origin)/delta;if(t1>t2)[t1,t2]=[t2,t1];near=Math.max(near,t1);far=Math.min(far,t2);if(near>far)return null}return near>=0&&near<=1?near:null
+    // Clip the segment against each half-space in turn; whatever survives is the
+    // entry point. X and Z are the footprint, the third pair is the body.
+    const spans=[[a.x,v.x,-collider.halfX,collider.halfX],[a.z,v.z,-collider.halfZ,collider.halfZ]];
+    if(collider.shape==='ramp'){
+      // A ramp is a wedge, not a box. Boxing it puts an invisible wall in the
+      // air over the shallow end of every embankment and stair flight — on a
+      // 14-metre viaduct off-ramp that is a wall you can shoot but not see.
+      const slope=(collider.rampHigh-collider.rampLow)/Math.max(1e-6,collider.halfZ*2);
+      const beneath=point=>point.y-collider.rampLow-slope*(point.z+collider.halfZ);
+      const depth=collider.rampThickness;
+      spans.push([beneath(a),v.y-slope*v.z,Number.isFinite(depth)?-depth:-Infinity,.15]);
+      if(!Number.isFinite(depth))spans.push([a.y,v.y,minY,Infinity]);
+    }else spans.push([a.y,v.y,minY,maxY]);
+    let near=0,far=1;
+    for(const [origin,delta,min,max] of spans){if(Math.abs(delta)<1e-9){if(origin<min||origin>max)return null;continue}let t1=(min-origin)/delta,t2=(max-origin)/delta;if(t1>t2)[t1,t2]=[t2,t1];near=Math.max(near,t1);far=Math.min(far,t2);if(near>far)return null}
+    return near>=0&&near<=1?near:null
   }
-  terrainHit(start,end){const distance=start.distanceTo(end),steps=Math.max(1,Math.min(10,Math.ceil(distance))),delta=end.clone().sub(start),point=new THREE.Vector3(),previous=start.clone(),surfaceY=this.projectileFloor(previous),previousGap=previous.y-surfaceY;if(previousGap<=0)return{t:0,surface:this.surfaceAt(previous)};for(let i=1;i<=steps;i++){const t=i/steps;point.copy(start).addScaledVector(delta,t);const ground=this.projectileFloor(point),gap=point.y-ground;if(gap<=0){let lo=(i-1)/steps,hi=t;for(let n=0;n<6;n++){const mid=(lo+hi)/2;point.copy(start).addScaledVector(delta,mid);const h=this.projectileFloor(point);if(point.y-h>0)lo=mid;else hi=mid}point.copy(start).addScaledVector(delta,hi);return{t:hi,surface:this.surfaceAt(point)}}previous.copy(point)}return null}
+  // Sampled march from `start` to `end` for the first point at or below the
+  // floor. Each sample is tested against the *higher* of its two endpoints, so a
+  // projectile that drops through a deck inside one step still catches it, while
+  // one travelling level underneath never sees that deck at all.
+  terrainHit(start,end){
+    const distance=start.distanceTo(end),steps=Math.max(1,Math.min(10,Math.ceil(distance))),delta=end.clone().sub(start);
+    const point=new THREE.Vector3(),previous=start.clone();
+    if(start.y-this.projectileFloor(start)<=0)return{t:0,surface:this.surfaceAt(start)};
+    for(let i=1;i<=steps;i++){
+      const t=i/steps;point.copy(start).addScaledVector(delta,t);
+      const reference=Math.max(previous.y,point.y);
+      if(point.y-this.projectileFloor(point,reference)>0){previous.copy(point);continue}
+      let lo=(i-1)/steps,hi=t;
+      for(let n=0;n<6;n++){const mid=(lo+hi)/2;point.copy(start).addScaledVector(delta,mid);if(point.y-this.projectileFloor(point,reference)>0)lo=mid;else hi=mid}
+      point.copy(start).addScaledVector(delta,hi);
+      return{t:hi,surface:this.surfaceAt(point)};
+    }
+    return null;
+  }
   boundsHit(start,end){const b=this.world?.bounds;if(!b)return null;if(Math.abs(end.x)<=b&&Math.abs(end.z)<=b)return null;const d=end.clone().sub(start),times=[];if(d.x>0)times.push((b-start.x)/d.x);else if(d.x<0)times.push((-b-start.x)/d.x);if(d.z>0)times.push((b-start.z)/d.z);else if(d.z<0)times.push((-b-start.z)/d.z);const valid=times.filter(t=>t>=0&&t<=1).sort((a,b)=>a-b);return valid.length?valid[0]:1}
   findImpact(p,start,end){
     let best=null,bestT=Infinity;const pointAt=t=>start.clone().lerp(end,t);

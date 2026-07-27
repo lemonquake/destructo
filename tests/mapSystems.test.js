@@ -6,7 +6,11 @@ import { MAPS, DOMINATION_MAPS, CAMPAIGN_MAPS, DEATHMATCH_SECRET_PLANS, DEFAULT_
 import { MAP_SURFACE_THEMES, surfaceTexturesForTheme } from '../src/data/mapSurfaces.js';
 import { BASE_TEXTURES, BUILDING_TEXTURES, MAP_TEXTURES } from '../src/game/Materials.js';
 import { CrateDropScheduler } from '../src/game/CrateDropSystem.js';
-import { World } from '../src/game/World.js';
+import { World, STEP_UP } from '../src/game/World.js';
+import { MAX_PLAYERS } from '../src/data/gameData.js';
+
+// A rail only stops anyone if it stands taller than the step-over tolerance.
+const RAIL_HEIGHT = STEP_UP + .55;
 
 describe('themed map roster', () => {
   it('ships four distinct selectable maps with player-facing copy', () => {
@@ -19,14 +23,18 @@ describe('themed map roster', () => {
     expect(mapById('missing').id).toBe(DEFAULT_MAP_ID);
   });
 
-  it('authors triple-scale deathmatch battlefields with explicit team capacities', () => {
-    expect(Object.values(MAPS).filter(map => map.maxTeams === 9)).toHaveLength(3);
+  it('authors oversized deathmatch battlefields with explicit team capacities', () => {
+    // Bedlam is the twelve-player megacity; the other three keep their original
+    // triple-scale procedural footprint.
+    expect(MAPS.crossroads).toMatchObject({ maxTeams: 12, bounds: 320, baseRadius: 272, surfaceScale: 1 });
+    expect(Object.values(MAPS).filter(map => map.maxTeams === 9)).toHaveLength(2);
     expect(Object.values(MAPS).filter(map => map.maxTeams === 5)).toHaveLength(1);
     for (const map of Object.values(MAPS)) {
-      expect(map.bounds).toBe(234);
-      expect(map.surfaceScale).toBe(3);
+      expect(map.bounds).toBeGreaterThanOrEqual(234);
+      expect(map.surfaceScale).toBeGreaterThan(0);
       expect(map.baseRadius).toBeGreaterThanOrEqual(190);
       expect(map.sizeClass).toBeTruthy();
+      expect(map.maxTeams).toBeLessThanOrEqual(MAX_PLAYERS);
     }
   });
 
@@ -96,12 +104,56 @@ describe('themed map roster', () => {
     expect(runtime).not.toContain('destructo-material-atlas');
   });
 
-  it('supports walkable platform tops and removable geometry blockers',()=>{
+  const geometryWorld = () => {
     const world={colliders:[],heightAt:()=>0,destructibles:[],interactiveStructures:[],baseTurrets:{},factories:{},colliderCellSize:24,colliderIndex:new Map(),colliderIndexDirty:true};
-    for(const name of ['registerCollider','colliderFrame','colliderContains','walkableTopAt','groundAt','removeCollidersFor','resolveCollisions','collidersNear','collidersInBounds','rebuildColliderIndex'])world[name]=World.prototype[name];
+    for(const name of ['registerCollider','colliderFrame','colliderContains','colliderSurfaceAt','toColliderLocal','fromColliderLocal','walkableTopAt','groundAt','removeCollidersFor','resolveCollisions','collidersNear','collidersInBounds','rebuildColliderIndex'])world[name]=World.prototype[name];
+    return world;
+  };
+
+  it('supports walkable platform tops and removable geometry blockers',()=>{
+    const world=geometryWorld();
     const platform=new THREE.Object3D();platform.position.y=1;world.registerCollider(platform,{shape:'box',halfX:3,halfZ:3,top:.5,blocking:false,walkable:true});
     expect(world.groundAt(new THREE.Vector3(1,0,1))).toBe(1.5);
     const blocker=new THREE.Object3D(),owner={dead:false};world.registerCollider(blocker,{shape:'box',halfX:1,halfZ:1,top:3},owner);const mover={group:{position:new THREE.Vector3(.5,0,0)},radius:.5};world.resolveCollisions(mover);expect(Math.abs(mover.group.position.x)).toBe(1.5);world.removeCollidersFor(owner);expect(owner.colliderHandles.every(c=>!c.enabled)).toBe(true);
+  });
+
+  it('reads a rotated box in its own local frame instead of a mirrored one',()=>{
+    const world=geometryWorld();
+    // A long wall turned 90°: it must occupy X, not the Z it started in.
+    const wall=new THREE.Object3D();wall.rotation.y=Math.PI/2;
+    world.registerCollider(wall,{shape:'box',halfX:1,halfZ:10,top:4,blocking:false,walkable:true});
+    expect(world.colliderContains(new THREE.Vector3(8,0,0),world.colliders[0])).toBe(true);
+    expect(world.colliderContains(new THREE.Vector3(0,0,8),world.colliders[0])).toBe(false);
+  });
+
+  it('climbs a ramp linearly along its own uphill axis',()=>{
+    const world=geometryWorld();
+    const wedge=new THREE.Object3D();                       // uphill toward +Z
+    world.registerCollider(wedge,{shape:'ramp',halfX:3,halfZ:10,rampLow:0,rampHigh:8,blocking:false,walkable:true});
+    expect(world.groundAt(new THREE.Vector3(0,0,-10))).toBeCloseTo(0);
+    expect(world.groundAt(new THREE.Vector3(0,2,0))).toBeCloseTo(4);
+    expect(world.groundAt(new THREE.Vector3(0,7,9.5))).toBeCloseTo(7.8);
+    const turned=new THREE.Object3D();turned.position.set(60,0,0);turned.rotation.y=Math.PI/2; // uphill toward +X
+    world.registerCollider(turned,{shape:'ramp',halfX:3,halfZ:10,rampLow:0,rampHigh:8,blocking:false,walkable:true});
+    expect(world.groundAt(new THREE.Vector3(60,4,0))).toBeCloseTo(4);
+    expect(world.groundAt(new THREE.Vector3(65,6,0))).toBeCloseTo(6);
+    expect(world.groundAt(new THREE.Vector3(52,1,0))).toBeCloseTo(.8);
+  });
+
+  it('keeps elevated decks off the street below and overhead rails out of it',()=>{
+    const world=geometryWorld();
+    const deck=new THREE.Object3D();deck.position.y=14;
+    world.registerCollider(deck,{shape:'box',halfX:11,halfZ:60,top:.5,blocking:false,walkable:true,elevated:true});
+    // Walking underneath must stay on the road; arriving at deck height stands on it.
+    expect(world.groundAt(new THREE.Vector3(0,0,0))).toBe(0);
+    expect(world.groundAt(new THREE.Vector3(0,14.5,0))).toBe(14.5);
+    // A rail must clear the step-over tolerance or a unit simply walks over it.
+    const rail=new THREE.Object3D();rail.position.y=14.5+RAIL_HEIGHT/2;
+    world.registerCollider(rail,{shape:'box',halfX:.2,halfZ:60,top:RAIL_HEIGHT/2,bottom:-RAIL_HEIGHT/2,blocking:true,walkable:false,navIgnore:true});
+    const below={group:{position:new THREE.Vector3(0,0,0)},radius:.7};world.resolveCollisions(below);
+    expect(below.group.position.x).toBe(0);
+    const onDeck={group:{position:new THREE.Vector3(0,14.5,0)},radius:.7};world.resolveCollisions(onDeck);
+    expect(Math.abs(onDeck.group.position.x)).toBeCloseTo(.9);
   });
 
   it('groups urban roofs with their destructible buildings',()=>{

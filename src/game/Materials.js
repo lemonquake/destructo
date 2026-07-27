@@ -108,6 +108,250 @@ const BUILDING_PAINTERS = {
       ctx.beginPath(); ctx.arc(96, y + 2, 2, 0, Math.PI * 2); ctx.fill();
     }
   },
+  // ── CRATE EXPECTATIONS · the confectionery pack ───────────────────────────
+  // Eighteen candy tiles for the candyland battlefield. Every pattern is laid
+  // on a pitch that divides 128 and anything crossing an edge is drawn again on
+  // the opposite one, so a wafer wall or a sprinkle road repeats without a seam.
+  // The two exceptions are deliberate: `peppermint` and `lollipop_swirl` are
+  // radial, and they are only ever mapped onto discs and drums where the tile
+  // is used once and its centre is the centre of the thing.
+  candy_cane(ctx, r) {
+    ctx.fillStyle = '#fff2f5'; ctx.fillRect(0, 0, 128, 128);
+    for (let i = -4; i < 8; i++) {
+      ctx.fillStyle = i % 2 ? '#ff3b57' : '#ff93a8';
+      ctx.beginPath(); ctx.moveTo(i * 32, 0); ctx.lineTo(i * 32 + 15, 0); ctx.lineTo(i * 32 + 15 + 128, 128); ctx.lineTo(i * 32 + 128, 128); ctx.fill();
+    }
+    ctx.globalAlpha = .3; ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 190; i++) ctx.fillRect(r() * 128, r() * 128, 2, 2);
+    ctx.globalAlpha = 1;
+  },
+  peppermint(ctx, r) {
+    ctx.fillStyle = '#fffafc'; ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = '#ff2f4d';
+    for (let i = 0; i < 6; i++) {
+      const start = i / 6 * Math.PI * 2;
+      ctx.beginPath(); ctx.moveTo(64, 64);
+      for (let t = 0; t <= 1; t += .05) ctx.lineTo(64 + Math.cos(start + t * 1.5) * t * 92, 64 + Math.sin(start + t * 1.5) * t * 92);
+      for (let t = 1; t >= 0; t -= .05) ctx.lineTo(64 + Math.cos(start + .52 + t * 1.5) * t * 92, 64 + Math.sin(start + .52 + t * 1.5) * t * 92);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#fffafc'; ctx.beginPath(); ctx.arc(64, 64, 9, 0, 7); ctx.fill();
+    ctx.globalAlpha = .22; ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 120; i++) ctx.fillRect(r() * 128, r() * 128, 2, 2);
+    ctx.globalAlpha = 1;
+  },
+  chocolate(ctx, r) {
+    ctx.fillStyle = '#4a2415'; ctx.fillRect(0, 0, 128, 128);
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+      ctx.fillStyle = ['#5d2f1b', '#6b3720', '#54291a'][Math.floor(r() * 3)];
+      ctx.fillRect(x * 64 + 4, y * 64 + 4, 56, 56);
+      ctx.fillStyle = 'rgba(255,222,190,.16)'; ctx.fillRect(x * 64 + 4, y * 64 + 4, 56, 5);
+      ctx.fillStyle = 'rgba(24,10,4,.35)'; ctx.fillRect(x * 64 + 4, y * 64 + 55, 56, 5);
+    }
+    ctx.globalAlpha = .3;
+    for (let i = 0; i < 90; i++) { ctx.fillStyle = r() > .5 ? '#3a1a0e' : '#7c4526'; ctx.fillRect(r() * 128, r() * 128, 3, 3); }
+    ctx.globalAlpha = 1;
+  },
+  white_chocolate(ctx, r) {
+    ctx.fillStyle = '#f0dfbb'; ctx.fillRect(0, 0, 128, 128);
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+      ctx.fillStyle = ['#f7e9cb', '#ecd6ac', '#fbf1da'][Math.floor(r() * 3)];
+      ctx.fillRect(x * 64 + 4, y * 64 + 4, 56, 56);
+      ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.fillRect(x * 64 + 4, y * 64 + 4, 56, 4);
+      ctx.fillStyle = 'rgba(160,124,74,.3)'; ctx.fillRect(x * 64 + 4, y * 64 + 56, 56, 4);
+    }
+  },
+  gingerbread(ctx, r) {
+    ctx.fillStyle = '#b06a30'; ctx.fillRect(0, 0, 128, 128);
+    ctx.globalAlpha = .5;
+    for (let i = 0; i < 300; i++) { ctx.fillStyle = r() > .5 ? '#9d5a26' : '#c47c3f'; ctx.fillRect(r() * 128, r() * 128, 3 + r() * 4, 2 + r() * 3); }
+    ctx.globalAlpha = 1;
+    // piped icing along both tiling edges, so a wall of biscuit reads as baked panels
+    ctx.strokeStyle = '#fffdf6'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+    for (const y of [7, 121]) { ctx.beginPath(); for (let x = 0; x <= 128; x += 8) ctx.lineTo(x, y + Math.sin(x * .25) * 3); ctx.stroke(); }
+    ctx.fillStyle = '#fffdf6';
+    for (const [x, y] of [[20, 64], [64, 40], [104, 76], [44, 100]]) { ctx.beginPath(); ctx.arc(x, y, 4.5, 0, 7); ctx.fill(); }
+  },
+  licorice(ctx, r) {
+    ctx.fillStyle = '#1b1622'; ctx.fillRect(0, 0, 128, 128);
+    for (let x = 0; x < 128; x += 16) {
+      ctx.fillStyle = ['#2a2233', '#211a29', '#332a3d'][Math.floor(r() * 3)];
+      ctx.fillRect(x + 1, 0, 14, 128);
+      ctx.fillStyle = 'rgba(190,160,225,.18)'; ctx.fillRect(x + 3, 0, 3, 128);
+    }
+  },
+  frosting(ctx, r) {
+    ctx.fillStyle = '#ffe6f3'; ctx.fillRect(0, 0, 128, 128);
+    ctx.lineWidth = 13; ctx.lineCap = 'round';
+    for (let y = -8; y < 136; y += 22) {
+      ctx.strokeStyle = ['#ffd0e8', '#fff3fa', '#ffc0e0'][Math.floor(r() * 3)];
+      ctx.beginPath(); for (let x = -8; x <= 136; x += 8) ctx.lineTo(x, y + Math.sin(x * .11) * 6); ctx.stroke();
+    }
+    // sprinkles, mirrored across both edges so none is ever cut in half
+    for (let i = 0; i < 26; i++) {
+      const x = r() * 128, y = r() * 128, angle = r() * Math.PI;
+      ctx.strokeStyle = ['#ff4d7d', '#57d7ff', '#ffe14d', '#7bff9c', '#c07bff'][Math.floor(r() * 5)];
+      ctx.lineWidth = 3.5;
+      for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) {
+        ctx.beginPath(); ctx.moveTo(x + ox - Math.cos(angle) * 5, y + oy - Math.sin(angle) * 5);
+        ctx.lineTo(x + ox + Math.cos(angle) * 5, y + oy + Math.sin(angle) * 5); ctx.stroke();
+      }
+    }
+  },
+  sprinkle_icing(ctx, r) {
+    ctx.fillStyle = '#fdf7ff'; ctx.fillRect(0, 0, 128, 128);
+    ctx.globalAlpha = .5;
+    for (let i = 0; i < 160; i++) { ctx.fillStyle = r() > .5 ? '#eee2f4' : '#ffffff'; ctx.fillRect(r() * 128, r() * 128, 4 + r() * 5, 3 + r() * 4); }
+    ctx.globalAlpha = 1; ctx.lineWidth = 4; ctx.lineCap = 'round';
+    for (let i = 0; i < 46; i++) {
+      const x = r() * 128, y = r() * 128, angle = r() * Math.PI;
+      ctx.strokeStyle = ['#ff4d7d', '#3fc9ff', '#ffd53f', '#5fe87e', '#b169ff', '#ff8a3f'][Math.floor(r() * 6)];
+      for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) {
+        ctx.beginPath(); ctx.moveTo(x + ox - Math.cos(angle) * 6, y + oy - Math.sin(angle) * 6);
+        ctx.lineTo(x + ox + Math.cos(angle) * 6, y + oy + Math.sin(angle) * 6); ctx.stroke();
+      }
+    }
+  },
+  rainbow_road(ctx, r) {
+    const bands = ['#ff3b57', '#ff8a2b', '#ffd93b', '#4ede75', '#3fbaff', '#6b6bff', '#c355ff'];
+    for (let i = 0; i < bands.length; i++) {
+      ctx.fillStyle = bands[i];
+      ctx.fillRect(0, Math.round(i * 128 / bands.length), 128, Math.ceil(128 / bands.length) + 1);
+    }
+    ctx.globalAlpha = .3; ctx.fillStyle = '#ffffff';
+    for (let x = 0; x < 128; x += 16) ctx.fillRect(x, 0, 5, 128);
+    ctx.globalAlpha = .22; ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 120; i++) ctx.fillRect(r() * 128, r() * 128, 2, 2);
+    ctx.globalAlpha = 1;
+  },
+  cotton_candy(ctx, r) {
+    ctx.fillStyle = '#ffbfe4'; ctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 220; i++) {
+      const x = r() * 128, y = r() * 128, radius = 7 + r() * 16;
+      ctx.globalAlpha = .16 + r() * .2;
+      ctx.fillStyle = ['#ffe1f2', '#ff9ed4', '#c9c4ff', '#a8e9ff'][Math.floor(r() * 4)];
+      for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) { ctx.beginPath(); ctx.arc(x + ox, y + oy, radius, 0, 7); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+  },
+  gumdrop(ctx, r) {
+    ctx.fillStyle = '#ff5f8f'; ctx.fillRect(0, 0, 128, 128);
+    ctx.globalAlpha = .28;
+    for (let i = 0; i < 90; i++) { ctx.fillStyle = r() > .5 ? '#ff90b4' : '#e03c6c'; ctx.fillRect(r() * 128, r() * 128, 6 + r() * 10, 6 + r() * 10); }
+    ctx.globalAlpha = .85;
+    // the sugar crust: hundreds of tiny facets catching the light
+    for (let i = 0; i < 460; i++) {
+      const x = r() * 128, y = r() * 128, size = 1.5 + r() * 2.5;
+      ctx.fillStyle = r() > .35 ? 'rgba(255,255,255,.75)' : 'rgba(255,220,240,.5)';
+      ctx.beginPath(); ctx.moveTo(x, y - size); ctx.lineTo(x + size, y); ctx.lineTo(x, y + size); ctx.lineTo(x - size, y); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  },
+  wafer(ctx, r) {
+    for (let band = 0; band < 4; band++) {
+      ctx.fillStyle = band % 2 ? '#f5d9a4' : '#c08d55';
+      ctx.fillRect(0, band * 32, 128, 32);
+      if (band % 2) {
+        ctx.fillStyle = 'rgba(190,140,80,.35)';
+        for (let x = 0; x < 128; x += 16) ctx.fillRect(x, band * 32 + 4, 8, 24);
+      } else {
+        ctx.fillStyle = 'rgba(255,235,205,.22)'; ctx.fillRect(0, band * 32, 128, 4);
+        ctx.fillStyle = 'rgba(90,52,24,.28)'; ctx.fillRect(0, band * 32 + 28, 128, 4);
+      }
+    }
+    ctx.globalAlpha = .25;
+    for (let i = 0; i < 120; i++) { ctx.fillStyle = r() > .5 ? '#8a5c2e' : '#ffe8c4'; ctx.fillRect(r() * 128, r() * 128, 3, 2); }
+    ctx.globalAlpha = 1;
+  },
+  caramel(ctx, r) {
+    ctx.fillStyle = '#d68b2c'; ctx.fillRect(0, 0, 128, 128);
+    for (let i = 0; i < 26; i++) {
+      ctx.globalAlpha = .3 + r() * .35;
+      ctx.strokeStyle = ['#f4b45a', '#e89b34', '#b96d1a', '#ffd489'][Math.floor(r() * 4)];
+      ctx.lineWidth = 4 + r() * 10; ctx.lineCap = 'round';
+      ctx.beginPath(); let x = r() * 128, y = -10; ctx.moveTo(x, y);
+      while (y < 138) { y += 16 + r() * 14; x += (r() - .5) * 34; ctx.lineTo(x, y); }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = .4; ctx.fillStyle = '#ffe7b4';
+    for (let i = 0; i < 60; i++) ctx.fillRect(r() * 128, r() * 128, 3, 2);
+    ctx.globalAlpha = 1;
+  },
+  marshmallow(ctx, r) {
+    ctx.fillStyle = '#fff6f8'; ctx.fillRect(0, 0, 128, 128);
+    for (let y = 0; y < 2; y++) for (let x = 0; x < 2; x++) {
+      ctx.fillStyle = (x + y) % 2 ? '#ffe4ec' : '#fffdfe';
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x * 64 + 4, y * 64 + 4, 56, 56, 18) : ctx.rect(x * 64 + 4, y * 64 + 4, 56, 56);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.beginPath(); ctx.ellipse(x * 64 + 24, y * 64 + 22, 12, 8, -.4, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = .35; ctx.fillStyle = '#ffd2e0';
+    for (let i = 0; i < 140; i++) ctx.fillRect(r() * 128, r() * 128, 2, 2);
+    ctx.globalAlpha = 1;
+  },
+  jellybean(ctx, r) {
+    ctx.fillStyle = '#2b1c3a'; ctx.fillRect(0, 0, 128, 128);
+    const colors = ['#ff4d7d', '#ffd53f', '#5fe87e', '#3fbaff', '#c355ff', '#ff8a3f'];
+    for (let i = 0; i < 34; i++) {
+      const x = r() * 128, y = r() * 128, angle = r() * Math.PI, color = colors[Math.floor(r() * colors.length)];
+      for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) {
+        ctx.fillStyle = color; ctx.beginPath(); ctx.ellipse(x + ox, y + oy, 13, 8, angle, 0, 7); ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,.55)'; ctx.beginPath(); ctx.ellipse(x + ox - Math.cos(angle) * 3, y + oy - Math.sin(angle) * 3 - 2, 4.5, 2.4, angle, 0, 7); ctx.fill();
+      }
+    }
+  },
+  waffle_cone(ctx, r) {
+    ctx.fillStyle = '#d99a4e'; ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#a96f2c'; ctx.lineWidth = 5;
+    for (let i = -8; i <= 8; i++) {
+      ctx.beginPath(); ctx.moveTo(i * 16, 0); ctx.lineTo(i * 16 + 128, 128); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(i * 16, 128); ctx.lineTo(i * 16 + 128, 0); ctx.stroke();
+    }
+    ctx.globalAlpha = .3; ctx.fillStyle = '#ffe0a8';
+    for (let i = 0; i < 130; i++) ctx.fillRect(r() * 128, r() * 128, 3, 3);
+    ctx.globalAlpha = 1;
+  },
+  lollipop_swirl(ctx, r) {
+    ctx.fillStyle = '#fff7fb'; ctx.fillRect(0, 0, 128, 128);
+    const colors = ['#ff3b7b', '#ffd53f', '#3fd0ff', '#7bff9c'];
+    for (let i = 0; i < 4; i++) {
+      ctx.strokeStyle = colors[i]; ctx.lineWidth = 11; ctx.lineCap = 'round';
+      ctx.beginPath();
+      for (let t = 0; t <= 1; t += .02) {
+        const angle = i / 4 * Math.PI * 2 + t * Math.PI * 3.1;
+        ctx.lineTo(64 + Math.cos(angle) * t * 88, 64 + Math.sin(angle) * t * 88);
+      }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = .3; ctx.fillStyle = '#ffffff';
+    for (let i = 0; i < 110; i++) ctx.fillRect(r() * 128, r() * 128, 2, 2);
+    ctx.globalAlpha = 1;
+  },
+  soda_fizz(ctx, r) {
+    ctx.fillStyle = '#ff9b3f'; ctx.fillRect(0, 0, 128, 128);
+    ctx.globalAlpha = .4;
+    for (let i = 0; i < 60; i++) { ctx.fillStyle = r() > .5 ? '#ffc46b' : '#ff7a24'; ctx.fillRect(r() * 128, r() * 128, 8 + r() * 14, 8 + r() * 14); }
+    ctx.globalAlpha = 1;
+    for (let i = 0; i < 70; i++) {
+      const x = r() * 128, y = r() * 128, radius = 2 + r() * 6;
+      for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) {
+        ctx.strokeStyle = 'rgba(255,246,214,.8)'; ctx.lineWidth = 1.6;
+        ctx.beginPath(); ctx.arc(x + ox, y + oy, radius, 0, 7); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,.5)'; ctx.beginPath(); ctx.arc(x + ox - radius * .3, y + oy - radius * .3, radius * .32, 0, 7); ctx.fill();
+      }
+    }
+  },
+  jelly(ctx, r) {
+    ctx.fillStyle = '#ff2f6d'; ctx.fillRect(0, 0, 128, 128);
+    ctx.globalAlpha = .35;
+    for (let i = 0; i < 40; i++) { ctx.fillStyle = r() > .5 ? '#ff6d9c' : '#c8134a'; ctx.beginPath(); ctx.arc(r() * 128, r() * 128, 8 + r() * 20, 0, 7); ctx.fill(); }
+    ctx.globalAlpha = .55; ctx.fillStyle = '#ffd0e0';
+    for (let i = 0; i < 20; i++) {
+      const x = r() * 128, y = r() * 128;
+      for (const [ox, oy] of [[0, 0], [128, 0], [-128, 0], [0, 128], [0, -128]]) { ctx.beginPath(); ctx.ellipse(x + ox, y + oy, 7, 3.4, -.6, 0, 7); ctx.fill(); }
+    }
+    ctx.globalAlpha = 1;
+  },
   crate_brown(ctx, r) {
     ctx.fillStyle = '#9c5a30'; ctx.fillRect(0, 0, 128, 128);
     ctx.strokeStyle = '#65391f'; ctx.lineWidth = 2;
@@ -249,6 +493,75 @@ export function paintSkinPreview(canvas, name) {
   canvas.width = canvas.height = 128;
   const ctx = canvas.getContext('2d');
   painter(ctx, seededRandom(name.length * 7919 + name.charCodeAt(0) * 131));
+}
+
+// ── map-picker card art ─────────────────────────────────────────────────────
+// Most battlefields show their signature texture asset in the setup screen.
+// Candyland has no raster asset — its whole surface is painted at runtime — so
+// it paints its own postcard instead: the layer-cake mountain, the spiral road
+// climbing it, a rainbow bridge and the cocoa run, under a sugar-floss sky.
+export const MAP_PREVIEW_PAINTERS = Object.freeze({
+  crown(ctx, width, height) {
+    const sky = ctx.createLinearGradient(0, 0, 0, height);
+    sky.addColorStop(0, '#ffd9f1'); sky.addColorStop(.55, '#ffeaf7'); sky.addColorStop(1, '#c9f6e2');
+    ctx.fillStyle = sky; ctx.fillRect(0, 0, width, height);
+    // floss clouds
+    ctx.fillStyle = 'rgba(255,255,255,.72)';
+    for (const [cx, cy, radius] of [[.16, .16, .09], [.24, .18, .07], [.8, .12, .08], [.72, .15, .06]]) {
+      ctx.beginPath(); ctx.arc(cx * width, cy * height, radius * width, 0, 7); ctx.fill();
+    }
+    // the cocoa run cutting across the foreground
+    ctx.strokeStyle = '#5d2f1b'; ctx.lineWidth = height * .09; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(-10, height * .93); ctx.quadraticCurveTo(width * .45, height * .78, width + 10, height * .95); ctx.stroke();
+    // the layer cake: four tiers, widest at the bottom
+    const tiers = [[.46, .74, '#5d2f1b'], [.36, .60, '#f0dfbb'], [.26, .47, '#ff9ec9'], [.16, .35, '#fff2f5']];
+    for (const [half, top, color] of tiers) {
+      ctx.fillStyle = color;
+      ctx.fillRect(width * (.5 - half), height * top, width * half * 2, height * (.95 - top));
+      ctx.fillStyle = 'rgba(255,255,255,.55)';
+      ctx.fillRect(width * (.5 - half), height * top, width * half * 2, height * .035);
+    }
+    // the spiral candy road, wrapping the cake tier by tier
+    ctx.lineWidth = height * .028; ctx.strokeStyle = '#ff3b57';
+    for (let i = 0; i < 4; i++) {
+      const y = height * (.40 + i * .13), half = width * (.17 + i * .1);
+      ctx.beginPath(); ctx.moveTo(width * .5 - half, y + height * .03); ctx.lineTo(width * .5 + half, y); ctx.stroke();
+    }
+    // a rainbow bridge reaching in from the right
+    const bands = ['#ff3b57', '#ff8a2b', '#ffd93b', '#4ede75', '#3fbaff', '#c355ff'];
+    bands.forEach((color, i) => {
+      ctx.strokeStyle = color; ctx.lineWidth = height * .016;
+      ctx.beginPath();
+      ctx.moveTo(width + 6, height * (.62 + i * .018));
+      ctx.quadraticCurveTo(width * .78, height * (.34 + i * .018), width * .62, height * (.47 + i * .018));
+      ctx.stroke();
+    });
+    // the cherry on top and its glow
+    ctx.fillStyle = '#ff2f4d'; ctx.beginPath(); ctx.arc(width * .5, height * .29, height * .05, 0, 7); ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,.85)'; ctx.beginPath(); ctx.arc(width * .485, height * .275, height * .016, 0, 7); ctx.fill();
+    // lollipops on the near ground
+    for (const [x, scale] of [[.08, 1], [.19, .7], [.9, .85]]) {
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = height * .015;
+      ctx.beginPath(); ctx.moveTo(width * x, height * .98); ctx.lineTo(width * x, height * (.98 - .2 * scale)); ctx.stroke();
+      ctx.fillStyle = '#ff5f9e'; ctx.beginPath(); ctx.arc(width * x, height * (.98 - .22 * scale), height * .055 * scale, 0, 7); ctx.fill();
+      ctx.strokeStyle = '#fff7fb'; ctx.lineWidth = height * .012;
+      ctx.beginPath(); ctx.arc(width * x, height * (.98 - .22 * scale), height * .028 * scale, 0, 4.4); ctx.stroke();
+    }
+    // sprinkles over the whole card
+    const random = seededRandom(4242);
+    for (let i = 0; i < 46; i++) {
+      const x = random() * width, y = random() * height * .96, angle = random() * Math.PI;
+      ctx.strokeStyle = bands[Math.floor(random() * bands.length)]; ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.moveTo(x - Math.cos(angle) * 4, y - Math.sin(angle) * 4);
+      ctx.lineTo(x + Math.cos(angle) * 4, y + Math.sin(angle) * 4); ctx.stroke();
+    }
+  },
+});
+export function paintMapPreview(canvas, mapId) {
+  const painter = MAP_PREVIEW_PAINTERS[mapId];
+  if (!painter || !canvas?.getContext) return false;
+  painter(canvas.getContext('2d'), canvas.width || 300, canvas.height || 220);
+  return true;
 }
 
 function paintTexture(name, painter) {

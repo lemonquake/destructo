@@ -65,7 +65,11 @@ export class NavGrid {
     this.blocked.fill(0); this.cost.fill(0);
     const world = this.world;
     for (const collider of world.colliders || []) {
-      if (!collider.enabled || !collider.blocking || collider.entity?.dead) continue;
+      if (!collider.enabled || collider.entity?.dead) continue;
+      // `navBlock` closes a route the collision resolver still lets the player
+      // through (ramps, roof decks); `navIgnore` opens one it blocks but only
+      // above head height (skybridge railings, viaduct parapets).
+      if (collider.navIgnore || !(collider.blocking || collider.navBlock)) continue;
       const frame = world.colliderFrame(collider);
       if (collider.shape === 'cylinder') this.rasterizeCircle(frame.position.x, frame.position.z, collider.radius);
       else this.rasterizeBox(frame.position.x, frame.position.z, frame.rotation, collider.halfX, collider.halfZ);
@@ -99,7 +103,9 @@ export class NavGrid {
     const extent = Math.hypot(hx, hz);
     const minX = Math.max(0, this.cellX(x - extent)), maxX = Math.min(this.size - 1, this.cellX(x + extent));
     const minZ = Math.max(0, this.cellZ(z - extent)), maxZ = Math.min(this.size - 1, this.cellZ(z + extent));
-    const cos = Math.cos(-rotation), sin = Math.sin(-rotation);
+    // world → box-local: THREE's Y rotation inverts to a plain 2-D rotation by
+    // +rotation (see World.toColliderLocal); the negated form mirrors the box.
+    const cos = Math.cos(rotation), sin = Math.sin(rotation);
     for (let cz = minZ; cz <= maxZ; cz++) for (let cx = minX; cx <= maxX; cx++) {
       const dx = this.centerX(cx) - x, dz = this.centerZ(cz) - z;
       const lx = dx * cos - dz * sin, lz = dx * sin + dz * cos;
