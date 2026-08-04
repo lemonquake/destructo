@@ -49,6 +49,23 @@ const GRAPPLE_RANGE = 54, GRAPPLE_LAUNCH_TIME = .36, GRAPPLE_PULL_TIME = 11 / 6;
 // in hit distance. Keep that parallax bounded while preserving exact aim once
 // the target is comfortably in front of the weapon.
 const AIM_CONVERGENCE = Object.freeze({ firstPerson: 2.5, shoulder: 6, mounted: 7 });
+// ── Third-person boom ────────────────────────────────────────────────────────
+// The wheel drives one normalised value, 0 (tight over-the-shoulder) → 1 (wide
+// tactical pull-back); boom length, pivot height, shoulder offset and FOV are all
+// interpolated from it. The default sits well back of the old fixed 5.2m rig with
+// a narrower lens, so the frame shows more ground and less wide-angle warp.
+// Everything that needs the rig reads shoulderView(), so the camera and the aim
+// code can never disagree about where the centred crosshair is pointing.
+export const CAMERA_ZOOM = Object.freeze({
+  default: .55, step: .09, smoothing: .0009,
+  near: Object.freeze({ dist: 2.1, height: 1.76, side: .2, fov: 55 }),
+  far: Object.freeze({ dist: 11.5, height: 2.62, side: 1.32, fov: 61 }),
+  firstPersonFov: Object.freeze({ near: 62, far: 80 }),
+  // the player's own body only covers the shot once the boom is short, so it
+  // dissolves across the last stretch of the zoom-in rather than popping away
+  fadeFrom: .3, fadeTo: .06, minOpacity: .05,
+});
+const smoothstep = t => t * t * (3 - 2 * t);
 const HOVER_ANGLE_TOLERANCE = THREE.MathUtils.degToRad(.35);
 const wrappedAngleDelta=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
 const stableCrosshairPoint=(game,origin,look,minForward)=>{
@@ -515,6 +532,9 @@ export class Game{
     this.domination=this.gameMode==='domination'?new DominationSystem(this.world.dominationTowers,this.teams,this.matchRules.maxScore,this.hostile.bind(this)):null;this.dominationHudSecond=-1;this.dominationLead=null;
     this.combat=new CombatSystem(this.scene,this.particles,()=>this.entities,this.handleDeath.bind(this),this.handleDamage.bind(this),(a,b)=>this.hostile(a,b),(x,z)=>this.world.groundAt({x,z}),this.recordStat.bind(this),()=>this.world.crates,this.world);
     this.combat.audio=this.audio;
+    // fires the first time a target catches, not on every refresh, so a chain of
+    // blasts on the same unit does not spam the toast
+    this.combat.onBurn=target=>{if(target===this.player)this.hud.toast('ON FIRE!',true)};
     this.builders=this.gameMode==='domination'?{}:Object.fromEntries(this.teams.map(t=>[t.id,new DBuilder(this.world,this.factory,this.handleBuild.bind(this),t.id,this.world.builderPositions[t.id])]));
     this.builder=this.builders[this.playerTeam]||null;
     const interact={mountTurret:(u,t)=>this.mountTurret(u,t),mountBunker:(u,b)=>this.mountBunker(u,b),mountMotorcycle:(u,m)=>this.mountMotorcycle(u,m),exit:(u,forced)=>this.exitInteractive(u,forced)};
@@ -528,7 +548,10 @@ export class Game{
     // face the battlefield center from the spawn, shoulder cam already in place
     const spawnLook=this.player.group.position.clone().multiplyScalar(-1).setY(0);
     this.fpsYaw=spawnLook.lengthSq()>1e-4?Math.atan2(spawnLook.x,spawnLook.z):0;this.fpsPitch=-.06;this.camShake=0;this.fpsMode=false;
-    this.camera.position.copy(this.player.group.position).add(new THREE.Vector3(-Math.sin(this.fpsYaw)*5.2,3.6,-Math.cos(this.fpsYaw)*5.2));this.camera.lookAt(this.player.group.position.clone().add(new THREE.Vector3(0,1.6,0)));this.hud.el.objective.textContent=this.gameMode==='domination'?`Capture towers for ${this.matchRules.maxScore} points`:this.mission.objective;this.configureModeHud();if(isCampaign)this.setupCampaignMission();}
+    this.camZoom=this.camZoomTarget=CAMERA_ZOOM.default;
+    // seed the camera on the boom the first frame will resolve, so the match opens
+    // without the view snapping back from the old fixed 5.2m rig
+    const seed=this.shoulderView(this.player);this.camera.position.copy(seed.position);this.camera.lookAt(seed.focus);this.camera.fov=seed.rig.fov;this.camera.updateProjectionMatrix();this.hud.el.objective.textContent=this.gameMode==='domination'?`Capture towers for ${this.matchRules.maxScore} points`:this.mission.objective;this.configureModeHud();if(isCampaign)this.setupCampaignMission();}
   setupCampaignMission(){
     this.campaignArmTasks=[];this.campaignArmStarted=false;this.campaignAttackOrdered=false;this.campaignRestockTimer=0;this.campaignEnemies=this.combatants.filter(e=>e.type==='unit'&&e.team!==this.playerTeam);this.campaignTimer=this.mission.rules?.defenseSeconds||this.mission.rules?.missionSeconds||0;this.campaignEnemyDeaths=0;this.campaignWavesSpawned=0;this.campaignRespawnTimer=this.mission.rules?.reinforcementSeconds||5;
     this.quest=new QuestSystem(this.mission,{onStepChanged:(step,previous)=>this.showQuestStep(step,previous),onProgress:(value,goal,pct)=>this.renderQuestProgress(value,goal,pct),onComplete:()=>this.endCampaignMission(true),onFail:reason=>this.endCampaignMission(false,reason)});
@@ -657,7 +680,9 @@ export class Game{
     this.ensureCombatantIndex();
     this.allies=this.friendsOf({team:this.playerTeam});
     this.enemies=this.foesOf({team:this.playerTeam});
-    if(this.state==='mission'){if(this.input.consume('KeyV'))this.campaignActive?this.handleCampaignCommand():this.cycleAIBehavior(1);if(this.input.consume('KeyC')&&!this.campaignActive)this.cycleAIBehavior(-1);this.updatePlayer(dt);this.updateGrapples(dt)}
+    // the boom settles before aiming, so updateAim and updateCamera build the
+    // crosshair ray from the same zoom instead of one frame apart
+    if(this.state==='mission'){this.updateCameraZoom(dt);if(this.input.consume('KeyV'))this.campaignActive?this.handleCampaignCommand():this.cycleAIBehavior(1);if(this.input.consume('KeyC')&&!this.campaignActive)this.cycleAIBehavior(-1);this.updatePlayer(dt);this.updateGrapples(dt)}
     const perfStart=performance.now(),foesByTeam={};for(const t of this.teams){const list=[...this.foesOf({team:t.id})];if(this.gameMode!=='domination'&&!(this.campaignActive&&this.mission.id==='golden-shield'))for(const tid of Object.keys(this.world.factories)){const f=this.world.factories[tid];if(!f.dead&&this.hostile(t.id,tid))list.push(f)}foesByTeam[t.id]=list}
     for(const e of this.combatants)this.ai.update(e,dt,foesByTeam[e.team]||[]);
     const afterAI=performance.now();
@@ -868,6 +893,88 @@ export class Game{
   lookDirection(out=new THREE.Vector3()){const yaw=this.fpsYaw||0,pitch=this.fpsPitch||0;return out.set(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch))}
   // align the shoulder camera with wherever the unit/platform is already aiming
   seedLookFromAim(aim){if(!aim||aim.lengthSq()<1e-4)return;this.fpsYaw=Math.atan2(aim.x,aim.z);this.fpsPitch=THREE.MathUtils.clamp(Math.asin(THREE.MathUtils.clamp(aim.y,-1,1)),-1.08,1.25)}
+  // ── boom rig ───────────────────────────────────────────────────────────────
+  // Dimensions of the shoulder boom at the current zoom. Mounted platforms frame
+  // their carrier rather than the rider, so only the boom *length* follows the
+  // wheel there — their pivot stays put and the gunnery origin never shifts.
+  shoulderRig(p=this.player){
+    const lerp=THREE.MathUtils.lerp,{near,far}=CAMERA_ZOOM,zoom=THREE.MathUtils.clamp(this.camZoom??CAMERA_ZOOM.default,0,1);
+    let anchor=p.group.position,height=lerp(near.height,far.height,zoom),dist=lerp(near.dist,far.dist,zoom),side=lerp(near.side,far.side,zoom),fov=lerp(near.fov,far.fov,zoom);
+    const boom=dist/lerp(near.dist,far.dist,CAMERA_ZOOM.default);
+    if(p.mountedTurret){anchor=p.mountedTurret.group.position;height=3.55;dist=6.6*boom;side=1.05;fov=62}
+    else if(p.mountedBunker){anchor=p.mountedBunker.group.position;height=3.4;dist=7.4*boom;side=.9;fov=62}
+    else if(p.mountedMotorcycle){const bike=p.mountedMotorcycle;anchor=bike.group.position;height=2.7;dist=(bike.vehicleKind==='tank'?9.6:7.6)*boom;side=0;fov=62}
+    return{anchor,height,dist,side,fov};
+  }
+  // Resolve the boom exactly as it will be placed this frame — ground clamp and
+  // all — and hand back the ray the centred crosshair actually traces. updateAim
+  // fires along this ray and updateCamera sits on it, so the shot converges on the
+  // reticle at every boom length instead of only at the one the old constants
+  // happened to be tuned for. Camera shake is deliberately left out: the aim rides
+  // the unshaken rig so recoil rattles the picture without walking the bullets.
+  shoulderView(p=this.player){
+    const rig=this.shoulderRig(p),look=this.lookDirection(),yaw=this.fpsYaw||0;
+    const pivot=new THREE.Vector3(rig.anchor.x-Math.cos(yaw)*rig.side,rig.anchor.y+rig.height,rig.anchor.z+Math.sin(yaw)*rig.side);
+    const position=pivot.clone().addScaledVector(look,-rig.dist);
+    const minY=this.world.groundAt(position)+.45;if(position.y<minY)position.y=minY;
+    const focus=pivot.clone().addScaledVector(look,30),ray=focus.clone().sub(position);
+    if(ray.lengthSq()<1e-6)ray.copy(look);else ray.normalize();
+    return{rig,look,pivot,position,focus,ray};
+  }
+  // wheel zoom: a scroll retargets the boom, the boom eases toward it, and the
+  // player's model dissolves as the camera closes in so it never covers the shot
+  updateCameraZoom(dt){
+    this.camZoomTarget=THREE.MathUtils.clamp(this.camZoomTarget??CAMERA_ZOOM.default,0,1);
+    this.camZoom=THREE.MathUtils.clamp(this.camZoom??this.camZoomTarget,0,1);
+    const wheel=this.input.mouse.wheelDelta;
+    if(wheel&&this.state==='mission'){
+      // one mouse notch (±100px) is a full step; trackpads scale down proportionally
+      this.camZoomTarget=THREE.MathUtils.clamp(this.camZoomTarget+THREE.MathUtils.clamp(wheel/100,-1,1)*CAMERA_ZOOM.step,0,1);
+      this.input.mouse.wheelDelta=0;
+    }
+    this.camZoom=THREE.MathUtils.lerp(this.camZoom,this.camZoomTarget,1-Math.pow(CAMERA_ZOOM.smoothing,dt));
+    const p=this.player;
+    if(!p||p.dead||this.fpsMode||this.state!=='mission'||p.mountedTurret||p.mountedBunker||p.mountedMotorcycle){this.setModelOpacity(p,1);return}
+    const{fadeFrom,fadeTo,minOpacity}=CAMERA_ZOOM,span=Math.max(1e-4,fadeFrom-fadeTo);
+    const t=smoothstep(THREE.MathUtils.clamp((this.camZoom-fadeTo)/span,0,1));
+    this.setModelOpacity(p,minOpacity+(1-minOpacity)*t);
+  }
+  // The player's own body is the one thing guaranteed to sit between the shoulder
+  // camera and the crosshair. Fade it instead of hiding it: materials are cloned
+  // once per unit and cached, so holding a fade costs a single opacity write per
+  // mesh. Clones are used rather than the originals because a unit's weapon and
+  // carried crate can share materials with the rest of the scene.
+  setModelOpacity(unit,opacity){
+    if(!unit?.group)return;
+    const key=`${unit.weaponId||''}|${unit.carriedCrate?.id||''}`;
+    if(unit.fadeKey!==key){this.clearModelFade(unit);unit.fadeKey=key}
+    const faded=opacity<.995;
+    if(!faded&&!unit.fadeActive)return;
+    if(!unit.fadeParts){
+      unit.fadeParts=[];
+      const roots=[unit.group];if(unit.carriedCrate?.group)roots.push(unit.carriedCrate.group);
+      for(const root of roots)root.traverse(node=>{
+        const material=(node.isMesh||node.isSprite)?node.material:null;
+        if(!material||Array.isArray(material))return;
+        unit.fadeParts.push({node,original:material,faded:null,baseOpacity:Number.isFinite(material.opacity)?material.opacity:1});
+      });
+    }
+    for(const part of unit.fadeParts){
+      if(!faded){if(part.node.material===part.faded)part.node.material=part.original;continue}
+      if(!part.faded)part.faded=part.original.clone();
+      // re-assert rather than set-once: setCloak() writes these flags straight onto
+      // whatever material is bound, which is the clone while a fade is running
+      if(part.faded.transparent!==true||part.faded.depthWrite!==false){part.faded.transparent=true;part.faded.depthWrite=false;part.faded.needsUpdate=true}
+      part.faded.opacity=part.baseOpacity*opacity;
+      if(part.node.material!==part.faded)part.node.material=part.faded;
+    }
+    unit.fadeActive=faded;
+  }
+  clearModelFade(unit){
+    if(!unit?.fadeParts)return;
+    for(const part of unit.fadeParts){if(part.node.material===part.faded)part.node.material=part.original;part.faded?.dispose?.()}
+    unit.fadeParts=null;unit.fadeActive=false;unit.fadeKey=null;
+  }
   mountedRole(unit,vehicle=unit?.mountedMotorcycle){if(!unit||!vehicle)return'none';if(vehicle.driver===unit)return(vehicle.vehicleKind==='tank'||vehicle.vehicleKind==='apc')?'tank-driver':'driver';return vehicle.type==='motorcycle'?'motorcycle-backrider':'passenger'}
   mountedCanFire(unit,vehicle=unit?.mountedMotorcycle){const role=this.mountedRole(unit,vehicle);return role==='tank-driver'||role==='motorcycle-backrider'}
   mountedLookDirection(vehicle,yawOffset=this.mountedViewYaw||0,pitch=this.mountedViewPitch||0){const yaw=vehicle.group.rotation.y+yawOffset;return new THREE.Vector3(Math.sin(yaw)*Math.cos(pitch),Math.sin(pitch),Math.cos(yaw)*Math.cos(pitch)).normalize()}
@@ -1120,13 +1227,15 @@ export class Game{
       // exact crosshair convergence: solve from the muzzle (where the round actually
       // spawns) to the point under the reticle, so the shot lands on the crosshair.
       // No smoothing on the fired direction — lag here is a guaranteed miss.
-      let targetPoint=(!mouseMoved&&!mobileMoved)?stableCrosshairPoint(this,this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z),look,AIM_CONVERGENCE.shoulder):null;
+      const view=this.shoulderView(p);
+      let targetPoint=(!mouseMoved&&!mobileMoved)?stableCrosshairPoint(this,this.combat?.muzzlePosition?.(p,0,new THREE.Vector3())||new THREE.Vector3(p.group.position.x,p.group.position.y+1.35,p.group.position.z),view.ray,AIM_CONVERGENCE.shoulder):null;
       const hovered=Boolean(targetPoint);
       if(!targetPoint){
         // nothing (fresh) under the reticle: aim at a far point on the exact crosshair
-        // ray, reconstructed from the shoulder-camera pivot (same rig as updateCamera)
-        const yaw=this.fpsYaw||0,right=new THREE.Vector3(-Math.cos(yaw),0,Math.sin(yaw));
-        targetPoint=p.group.position.clone().add(new THREE.Vector3(0,2.05,0)).addScaledVector(right,.85).addScaledVector(look,Math.max(60,p.weapon?.effectiveRange||45));
+        // ray. It is taken from the same shoulderView() the camera is built from —
+        // including the ground clamp that lifts the boom out of terrain — so zooming
+        // the boom in or out never walks the shot off the reticle.
+        targetPoint=view.position.clone().addScaledVector(view.ray,view.rig.dist+Math.max(60,p.weapon?.effectiveRange||45));
       }
       const solved=this.combat?.ballisticDirectionTo?.(p,targetPoint);
       if(hovered)this.ballisticOutOfRange=!solved;
@@ -1165,8 +1274,11 @@ export class Game{
     // quick mouse turn on the skipped frame.
     this._hoverViewYaw=this.fpsYaw||0;
     this._hoverViewPitch=this.fpsPitch||0;
-    // ignore hits between the shoulder camera and the player (walls behind the character)
-    const minHitDist=(!this.fpsMode&&this.camera?.position&&this.player?.group)?this.camera.position.distanceTo(this.player.group.position)*.82:0;
+    // Ignore hits between the shoulder camera and the player (walls behind the
+    // character). The band is measured back from the player rather than as a
+    // fraction of the boom: the wheel can stretch the boom to 11m, and a fraction
+    // would then swallow everything within a few metres in front of the muzzle.
+    const minHitDist=(!this.fpsMode&&this.camera?.position&&this.player?.group)?Math.max(0,this.camera.position.distanceTo(this.player.group.position)-(this.player.radius||.72)*1.25):0;
 
     // Perform targeted raycasting only against relevant meshes
     const targets = [];
@@ -1239,7 +1351,7 @@ export class Game{
     if(nearest&&this.input.consume('KeyE')){nearest.carried=true;nearest.physicsActive=false;nearest.velocity?.set(0,0,0);nearest.angularVelocity?.set(0,0,0);nearest.visual?.rotation.set(0,0,0);p.carriedCrate=nearest;this.audio.play('pickup')}
     else if(canTakeBack&&this.input.consume('KeyE')){const crate=this.builder.takeBack(p.group.position);if(crate){crate.carried=true;crate.physicsActive=false;crate.velocity?.set(0,0,0);crate.angularVelocity?.set(0,0,0);crate.visual?.rotation.set(0,0,0);p.carriedCrate=crate;this.audio.play('pickup');this.hud.toast(`${crate.crateType.name.toUpperCase()} RETRIEVED`)}}}
   switchPlayer(){if(this.player.carriedCrate){this.hud.toast('DROP THE CRATE FIRST',true);return}const controllable=this.livingUnits(this.playerTeam);if(controllable.length<2)return;const next=controllable[(controllable.indexOf(this.player)+1)%controllable.length];this.possess(next);this.hud.toast(`${next.classDef.name.toUpperCase()} SELECTED`)}
-  possess(unit){if(this.player)this.player.player=false;this.setHealAim(false);this.setGrappleAim(false);unit.player=true;unit.ammo=unit.ammo??60;this.player=unit;this.lockTarget=null;this.seedLookFromAim?.(unit.aim);if(AI_BEHAVIORS[this.aiBehaviorIndex]?.id==='bodyguard'){for(const ally of this.livingUnits(this.playerTeam)){ally.patrolPoint=null;ally.commandPoint=null}this.hud.toast(`BODYGUARD PRIORITY · ${unit.classDef.name.toUpperCase()}`)}}
+  possess(unit){if(this.player){this.player.player=false;this.clearModelFade(this.player)}this.setHealAim(false);this.setGrappleAim(false);unit.player=true;unit.ammo=unit.ammo??60;this.player=unit;this.lockTarget=null;this.seedLookFromAim?.(unit.aim);if(AI_BEHAVIORS[this.aiBehaviorIndex]?.id==='bodyguard'){for(const ally of this.livingUnits(this.playerTeam)){ally.patrolPoint=null;ally.commandPoint=null}this.hud.toast(`BODYGUARD PRIORITY · ${unit.classDef.name.toUpperCase()}`)}}
   setCloak(entity,enabled){entity.group.traverse(o=>{if(!o.isMesh||!o.material)return;o.material.transparent=enabled;o.material.opacity=enabled?.24:1;o.material.depthWrite=!enabled;o.material.needsUpdate=true})}
   useAbility(){const p=this.player;
     if(p.active){if(p.abilityCooldown>0||p.mp<p.active.cost){this.hud.toast('SKILL NOT READY',true);return}this.executeActiveSkill(p);return}
@@ -1257,7 +1369,7 @@ export class Game{
     this.grapples.push({unit,start,target,line,hook,elapsed:0});this.audio.play('pistol',unit.group.position,1.35);this.hud.toast('HOOK AWAY!');return true}
   updateGrapples(dt){for(let i=this.grapples.length-1;i>=0;i--){const g=this.grapples[i],chest=g.unit.group.position.clone().add(new THREE.Vector3(0,1.25,0));g.elapsed+=dt;let hookPos;
       if(g.elapsed<GRAPPLE_LAUNCH_TIME){const t=g.elapsed/GRAPPLE_LAUNCH_TIME;hookPos=g.start.clone().lerp(g.target,t).add(new THREE.Vector3(0,1.1*(1-t),0))}
-      else{const t=Math.min(1,(g.elapsed-GRAPPLE_LAUNCH_TIME)/GRAPPLE_PULL_TIME),ease=1-Math.pow(1-t,3);g.unit.group.position.copy(g.start).lerp(g.target,ease);g.unit.group.position.y+=Math.sin(t*Math.PI)*2.1;g.unit.velocity.set(0,0,0);hookPos=g.target.clone();if(t>=1){g.unit.grappling=false;g.unit.group.position.copy(g.target);g.unit.groundY=this.world.groundAt(g.target);this.combat.radial(g.target,3.5,22,g.unit,8);this.particles.burst(g.target.clone().add(new THREE.Vector3(0,.6,0)),0x55e9ff,24,7);this.scene.remove(g.line,g.hook);g.line.geometry.dispose();g.line.material.dispose();g.hook.geometry.dispose();g.hook.material.dispose();this.grapples.splice(i,1);continue}}
+      else{const t=Math.min(1,(g.elapsed-GRAPPLE_LAUNCH_TIME)/GRAPPLE_PULL_TIME),ease=1-Math.pow(1-t,3);g.unit.group.position.copy(g.start).lerp(g.target,ease);g.unit.group.position.y+=Math.sin(t*Math.PI)*2.1;g.unit.velocity.set(0,0,0);hookPos=g.target.clone();if(t>=1){g.unit.grappling=false;g.unit.group.position.copy(g.target);g.unit.groundY=this.world.groundAt(g.target);this.combat.radial(g.target,3.5,22,g.unit,8,{burn:false});this.particles.burst(g.target.clone().add(new THREE.Vector3(0,.6,0)),0x55e9ff,24,7);this.scene.remove(g.line,g.hook);g.line.geometry.dispose();g.line.material.dispose();g.hook.geometry.dispose();g.hook.material.dispose();this.grapples.splice(i,1);continue}}
       g.hook.position.copy(hookPos);g.line.geometry.setFromPoints([chest,hookPos]);g.line.geometry.attributes.position.needsUpdate=true}}
   // the 20 Active Skills carried by Special Destructos
   executeActiveSkill(u){const skill=u.active;if(!skill||u.abilityCooldown>0||u.mp<skill.cost)return;u.mp-=skill.cost;u.abilityCooldown=skill.cooldown;const pos=u.group.position,foes=this.foesOf(u),friends=this.friendsOf(u);
@@ -1265,7 +1377,9 @@ export class Game{
       case 'fireball':this.combat.spawn(u,u.aim,{...WEAPONS.rocket,damage:60,bulletSpeed:22,color:0xff8a2c});break;
       case 'blink':this.particles.burst(pos.clone().add(new THREE.Vector3(0,1,0)),0x9fe8ff,16,5);u.group.position.addScaledVector(u.aim,8);this.world.clamp(u.group.position);u.group.position.y=this.world.groundAt(u.group.position);this.particles.burst(u.group.position.clone().add(new THREE.Vector3(0,1,0)),0x9fe8ff,16,5);break;
       case 'healburst':for(const f of friends)if(f.group.position.distanceTo(pos)<8&&Number.isFinite(f.maxHp)){const healed=this.healUnit(f,40,u);f.freeze=0;f.stun=0;if(healed)this.spawnDamageNumber(f.group.position,`+${Math.round(healed)}`,'heal')}this.particles.burst(pos.clone().add(new THREE.Vector3(0,1,0)),0x67ffc4,26,6);break;
-      case 'shockwave':this.combat.radial(pos,6,30,u,14);break;
+      // the three kinetic abilities borrow the explosive radial for their knockback
+      // but are concussive, not incendiary — no fire debuff from a body slam
+      case 'shockwave':this.combat.radial(pos,6,30,u,14,{burn:false});break;
       case 'decoy':{const d=this.factory.createUnit(u.classId,u.team,pos.clone().addScaledVector(u.aim,2));d.hp=d.maxHp=60;d.weapon={...WEAPONS.pistol,effectiveRange:0};d.stationary=true;d.decoy=true;this.combatants.push(d);this.entities.push(d);break}
       case 'frenzy':u.frenzyTimer=5;for(const f of friends)if(f!==u&&f.type==='unit'&&f.buffs&&f.group.position.distanceTo(pos)<8)f.buffs.rapid=Math.max(f.buffs.rapid,3);break;
       case 'icenova':for(const f of foes)if(f.group.position.distanceTo(pos)<7){f.freeze=2.5;this.spawnDamageNumber(f.group.position,'FROZEN','status')}this.particles.burst(pos.clone().add(new THREE.Vector3(0,.6,0)),0x9fe8ff,32,8);break;
@@ -1273,8 +1387,8 @@ export class Game{
       case 'smokescreen':for(const f of foes)if(f.group.position.distanceTo(pos)<9)f.fireCooldown=Math.max(f.fireCooldown,2.5);this.particles.burst(pos.clone().add(new THREE.Vector3(0,1,0)),0x8b93a5,44,5);break;
       case 'sentry':{const t=this.factory.createTurret(u.team,pos.clone().addScaledVector(u.aim,2.2));t.group.position.y=this.world.groundAt(t.group.position);this.combatants.push(t);this.entities.push(t);break}
       case 'minefield':for(let i=0;i<4;i++){const dir=new THREE.Vector3(Math.sin(i*1.57+.7),0,Math.cos(i*1.57+.7));this.combat.spawn(u,dir,WEAPONS.mine)}break;
-      case 'dashstrike':u.velocity.addScaledVector(u.aim,18);this.combat.radial(pos.clone().addScaledVector(u.aim,2),3,25,u,6);break;
-      case 'groundpound':u.verticalVelocity=8;this.combat.radial(pos,5,40,u,12);break;
+      case 'dashstrike':u.velocity.addScaledVector(u.aim,18);this.combat.radial(pos.clone().addScaledVector(u.aim,2),3,25,u,6,{burn:false});break;
+      case 'groundpound':u.verticalVelocity=8;this.combat.radial(pos,5,40,u,12,{burn:false});break;
       case 'barrierdome':u.barrierTimer=6;for(const f of friends)if(f!==u&&f.group.position.distanceTo(pos)<6)f.barrierTimer=Math.max(f.barrierTimer||0,6);break;
       case 'chainlightning':{let hit=0;for(const f of foes.sort((a,b)=>a.group.position.distanceToSquared(pos)-b.group.position.distanceToSquared(pos))){if(hit>=4||f.group.position.distanceTo(pos)>12)break;this.combat.applyDamage(f,25,u,f.group.position.clone().sub(pos).normalize(),3);this.particles.burst(f.group.position.clone().add(new THREE.Vector3(0,1.4,0)),0xaef3ff,10,4);hit++}break}
       case 'rocketbarrage':for(let i=-2;i<=2;i++){const dir=u.aim.clone().applyAxisAngle(new THREE.Vector3(0,1,0),i*.14);this.combat.spawn(u,dir,{...WEAPONS.rocket,damage:45})}break;
@@ -1462,7 +1576,11 @@ export class Game{
     if(mine)this.particles.burst(pos.clone().add(new THREE.Vector3(0,1,0)),TEAM.YELLOW,30,8);
     if(this.mission.type==='build'&&mine&&recipe.output==='unit'&&recipe.count>=4)setTimeout(()=>this.endMission(true),700);
     return true}
-  handleDamage(target,amount,source,direction=null,explosive=false){if(amount<=0){if(target.passive?.id==='lucky')this.spawnDamageNumber(target.group.position,'DODGE','status');return}
+  // `kind` is 'burn' for a fire-debuff tick. Those arrive twice a second for up to
+  // three seconds, so they skip the impact presentation — blood, hit sound and the
+  // full-screen hurt flash — and read as orange numbers over the flames instead.
+  handleDamage(target,amount,source,direction=null,explosive=false,kind='hit'){if(amount<=0){if(target.passive?.id==='lucky')this.spawnDamageNumber(target.group.position,'DODGE','status');return}
+    const burning=kind==='burn';
     // AI reactions: the victim aggros its first attacker, and hits on a base
     // building sound the home-defense alarm for that team
     this.ai?.notifyDamage?.(target,source);if(target.missionVIP)target.lastDamagedAt=this.elapsed||0;
@@ -1470,7 +1588,7 @@ export class Game{
     // temporary overhead HP bar for anything that just took a hit
     if(target.group&&Number.isFinite(target.maxHp))target.hpBarTimer=3;
     // blood spray + ground stain for anything fleshy
-    if(target.type==='unit'||target.type==='wildlife')this.particles.blood(target.group.position.clone().add(new THREE.Vector3(0,1.2,0)),direction&&direction.lengthSq()>.001?direction.clone().setY(0).normalize():null,amount>25?16:9);
+    if(!burning&&(target.type==='unit'||target.type==='wildlife'))this.particles.blood(target.group.position.clone().add(new THREE.Vector3(0,1.2,0)),direction&&direction.lengthSq()>.001?direction.clone().setY(0).normalize():null,amount>25?16:9);
     if(['prop','factory','turret','bunker'].includes(target.type)&&target.group){
       if(!target.originalScale){
         target.originalScale=target.group.scale.clone();
@@ -1503,10 +1621,10 @@ export class Game{
     // anything else that wants a bespoke response can hang one here without
     // this method having to know what a gumball is.
     target.onHit?.(amount,source,direction,explosive);
-    const kind=target===this.player?'hurt-player':this.hostile(this.playerTeam,target.team)?'hurt-enemy':target.team?'hurt-ally':'hurt';
-    this.spawnDamageNumber(target.group.position,String(Math.max(1,Math.round(amount))),kind);
+    const numberKind=burning?'burn':target===this.player?'hurt-player':this.hostile(this.playerTeam,target.team)?'hurt-enemy':target.team?'hurt-ally':'hurt';
+    this.spawnDamageNumber(target.group.position,String(Math.max(1,Math.round(amount))),numberKind);
     // Play hit sound spatially
-    if (target.group && target.group.position) {
+    if (!burning && target.group && target.group.position) {
       const pos = target.group.position;
       if (target.type === 'unit') {
         this.audio.play('destructo_hit', pos);
@@ -1527,7 +1645,7 @@ export class Game{
         }
       }
     }
-    if(target===this.player)this.hud.damage()}
+    if(target===this.player&&!burning)this.hud.damage()}
   spawnDamageNumber(position,text,kind){const s=this.toScreen(position);if(s)this.hud.damageNumber(s.x,s.y,text,kind)}
   spawnDeathQuip(target){const s=this.toScreen(target.group.position);if(!s)return;const words=['PWNED!','BONKED!','KAPOW!','OOPS!','SPLATTED!','YEETED!','WRECKED!','BYE-BYE!'];this.hud.burstingText(s.x,s.y,pick(words))}
   spawnDestructibleSupply(target,random=Math.random){
@@ -1608,8 +1726,10 @@ export class Game{
     }
     const p=this.player;if(!p)return;
     if(this.fpsMode){
-      if(this.camera.fov!==72){
-        this.camera.fov=72;
+      // no boom to slide in first person, so the wheel widens/narrows the lens instead
+      const fpsFov=THREE.MathUtils.lerp(CAMERA_ZOOM.firstPersonFov.near,CAMERA_ZOOM.firstPersonFov.far,THREE.MathUtils.clamp(this.camZoom??CAMERA_ZOOM.default,0,1));
+      if(Math.abs(this.camera.fov-fpsFov)>1e-3){
+        this.camera.fov=fpsFov;
         this.camera.updateProjectionMatrix();
       }
       // follow the raw look direction, not p.aim: the aim now carries ballistic
@@ -1623,25 +1743,17 @@ export class Game{
     }
     // ── shoulder camera: the boom hangs behind the mouse-look direction, the
     //    crosshair stays screen-centered, and mounts just swap rig dimensions ──
-    if(this.camera.fov!==62){this.camera.fov=62;this.camera.updateProjectionMatrix()}
-    const look=this.lookDirection();
-    let anchor=p.group.position,height=2.05,dist=5.2,side=.85;
-    if(p.mountedTurret){anchor=p.mountedTurret.group.position;height=3.55;dist=6.6;side=1.05}
-    else if(p.mountedBunker){anchor=p.mountedBunker.group.position;height=3.4;dist=7.4;side=.9}
-    else if(p.mountedMotorcycle){const bike=p.mountedMotorcycle;anchor=bike.group.position;height=2.7;dist=bike.vehicleKind==='tank'?9.6:7.6;side=0}
-    const yaw=this.fpsYaw||0,right=new THREE.Vector3(-Math.cos(yaw),0,Math.sin(yaw));
-    const pivot=anchor.clone().add(new THREE.Vector3(0,height,0)).addScaledVector(right,side);
-    const desired=pivot.clone().addScaledVector(look,-dist);
-    const minY=this.world.groundAt(desired)+.45;if(desired.y<minY)desired.y=minY;
+    const view=this.shoulderView(p),desired=view.position;
+    if(Math.abs(this.camera.fov-view.rig.fov)>1e-3){this.camera.fov=view.rig.fov;this.camera.updateProjectionMatrix()}
     if(this.cameraScout){
       const scout=this.cameraScout;
       if(!scout.returning){scout.elapsed+=dt;const scoutPos=scout.point.clone().add(new THREE.Vector3(0,24,18));this.camera.position.lerp(scoutPos,1-Math.pow(.00001,dt));this.camera.lookAt(scout.point);if(scout.elapsed>=3)scout.returning=true;return}
-      this.camera.position.lerp(desired,1-Math.pow(.00001,dt));this.camera.lookAt(pivot.clone().addScaledVector(look,30));
+      this.camera.position.lerp(desired,1-Math.pow(.00001,dt));this.camera.lookAt(view.focus);
       if(this.camera.position.distanceTo(desired)<.8)this.cameraScout=null;
       return;
     }
     this.camera.position.copy(desired);
-    this.camera.lookAt(pivot.clone().addScaledVector(look,30));
+    this.camera.lookAt(view.focus);
     this.applyCameraShake(dt)}
   // impulse-based shake: shots pump camShake, the boom jitters and settles
   applyCameraShake(dt){
@@ -2043,7 +2155,7 @@ export class Game{
     if(this.state!=='setup'||!this.gameSetup){this.showGameSetup();return}
     this.gameSetup.refreshBody();
   }
-  endRuntime(){this.gameSetup?.dispose();this.gameSetup=null;this.endArena();this.endBlitz();this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
+  endRuntime(){this.clearModelFade(this.player);this.gameSetup?.dispose();this.gameSetup=null;this.endArena();this.endBlitz();this.input.enabled=false;this.input.mouse.down=false;this.hud.show(false);this.hud.showInfo(null);this.hud.setHealMode(false);this.hud.setGrappleMode(false);this.hud.setLockMarker?.(null,null,false);this.hud.setVehicleRole?.('none');this.healAim=false;this.grappleAim=false;this.hud.clearSquad();document.body.classList.remove('observing','domination-mode','campaign-mode');document.getElementById('quest-hud')?.classList.add('hidden');document.getElementById('observer-panel')?.classList.add('hidden');document.getElementById('domination-hud')?.classList.add('hidden');document.getElementById('domination-announcement')?.classList.add('hidden');if(this.camera&&this.camera.fov!==48){this.camera.fov=48;this.camera.updateProjectionMatrix()}if(this.transparentCrate){this.restoreCrateOpacity(this.transparentCrate);this.transparentCrate=null;}}
   disposeScene(){if(!this.scene)return;this.scene.traverse(o=>{if(o.geometry)o.geometry.dispose?.();if(o.material&&!Array.isArray(o.material))o.material.dispose?.()});this.scene.clear();this.materials?.dispose?.();this.world?.dispose?.();this.materials=null;this.world=null}
   resize(){const w=innerWidth,h=innerHeight;this.camera.aspect=w/h;this.camera.updateProjectionMatrix();this.renderer.setSize(w,h)}
   loop(){if(this.running)return;this.running=true;const frame=()=>{requestAnimationFrame(frame);const time=performance.now()/1000,dt=time-this.lastFrame;this.lastFrame=time;const updateStart=performance.now();this.update(dt,time);const renderStart=performance.now();this.renderer.render(this.scene,this.camera);const frameEnd=performance.now();if(['mission','observer','victory_sequence'].includes(this.state))this.performanceGovernor?.update(dt,{...this.combat?.diagnostics?.(),...this._perfBreakdown,updateMs:renderStart-updateStart,renderMs:frameEnd-renderStart})};frame()}

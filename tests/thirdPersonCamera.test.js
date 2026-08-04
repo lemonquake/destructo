@@ -5,8 +5,15 @@ import { SETTINGS_DEFAULTS } from '../src/data/gameData.js';
 global.window = { addEventListener: () => {}, removeEventListener: () => {}, navigator: { userAgent: '' }, matchMedia: () => ({ matches: false }), innerWidth: 1024, innerHeight: 768 };
 global.document = { pointerLockElement: null, body: { classList: { add: () => {}, remove: () => {} } }, addEventListener: () => {}, removeEventListener: () => {}, querySelector: () => null, getElementById: () => null, querySelectorAll: () => [], createElementNS: () => ({ style: {}, addEventListener: () => {}, removeEventListener: () => {} }) };
 
-let Game;
-beforeAll(async () => { const mod = await import('../src/game/Game.js'); Game = mod.Game; });
+let Game, CAMERA_ZOOM;
+beforeAll(async () => { const mod = await import('../src/game/Game.js'); Game = mod.Game; CAMERA_ZOOM = mod.CAMERA_ZOOM; });
+// the rig the wheel interpolates: everything the camera tests assert is derived
+// from the same constants the game uses, so retuning the boom cannot silently
+// invalidate the expectations
+const rigAt = zoom => {
+  const lerp = (a, b, t) => a + (b - a) * t, { near, far } = CAMERA_ZOOM;
+  return { dist: lerp(near.dist, far.dist, zoom), height: lerp(near.height, far.height, zoom), side: lerp(near.side, far.side, zoom), fov: lerp(near.fov, far.fov, zoom) };
+};
 
 const soldier = () => ({
   team: 'blue', weaponId: 'rifle', weapon: { effectiveRange: 45 },
@@ -19,6 +26,9 @@ const aimGame = (player, mouse = {}, overrides = {}) => ({
   input: { mouse: { dx: 0, dy: 0, right: false, rightPressed: false, ...mouse }, mobile: false },
   hud: { toast: vi.fn(), lockPulse: vi.fn() }, audio: { play: vi.fn() }, combat: {},
   isLockable: () => false,
+  // aim rebuilds the crosshair ray from the same boom the camera uses
+  world: { groundAt: () => 0 },
+  lookDirection: Game.prototype.lookDirection, shoulderRig: Game.prototype.shoulderRig, shoulderView: Game.prototype.shoulderView,
   ...overrides,
 });
 
@@ -107,21 +117,33 @@ describe('third-person shoulder aim', () => {
 describe('third-person shoulder camera', () => {
   const cameraGame = player => ({
     state: 'mission', fpsMode: false, fpsYaw: 0, fpsPitch: 0, player, cameraScout: null, camShake: 0,
+    camZoom: CAMERA_ZOOM.default, camZoomTarget: CAMERA_ZOOM.default,
     camera: { fov: 48, position: new THREE.Vector3(), updateProjectionMatrix: vi.fn(), lookAt: vi.fn() },
     world: { groundAt: () => 0 },
     lookDirection: Game.prototype.lookDirection, applyCameraShake: Game.prototype.applyCameraShake,
+    shoulderRig: Game.prototype.shoulderRig, shoulderView: Game.prototype.shoulderView,
   });
 
   it('hangs behind and above the player, offset over the RIGHT shoulder (player left of crosshair)', () => {
     const player = soldier();
     const game = cameraGame(player);
+    const rig = rigAt(CAMERA_ZOOM.default);
     Game.prototype.updateCamera.call(game, .016);
-    expect(game.camera.fov).toBe(62);
-    expect(game.camera.position.z).toBeLessThan(0);
-    expect(game.camera.position.y).toBeGreaterThan(1.5);
+    expect(game.camera.fov).toBeCloseTo(rig.fov);
+    expect(game.camera.position.z).toBeCloseTo(-rig.dist);
+    expect(game.camera.position.y).toBeCloseTo(rig.height);
     // looking along +Z, screen-right is world -X: the boom shifts right, the player sits left of center
-    expect(game.camera.position.x).toBeCloseTo(-.85);
+    expect(game.camera.position.x).toBeCloseTo(-rig.side);
     expect(game.camera.lookAt).toHaveBeenCalled();
+  });
+
+  it('opens on a wider frame than the old fixed 5.2m / 62° rig', () => {
+    const rig = rigAt(CAMERA_ZOOM.default);
+    expect(rig.dist).toBeGreaterThan(5.2);   // boom pulled back
+    expect(rig.fov).toBeLessThan(62);        // lens narrowed, so less wide-angle warp
+    // net visible extent at the player's plane still grows
+    const extent = (dist, fov) => 2 * dist * Math.tan(fov / 2 * Math.PI / 180);
+    expect(extent(rig.dist, rig.fov)).toBeGreaterThan(extent(5.2, 62));
   });
 
   it('strafes D toward screen-right and A toward screen-left relative to the camera', () => {
@@ -157,6 +179,117 @@ describe('third-person shoulder camera', () => {
     game.fpsPitch = 1.2; // looking almost straight up pushes the boom down
     Game.prototype.updateCamera.call(game, .016);
     expect(game.camera.position.y).toBeGreaterThanOrEqual(30.45);
+  });
+});
+
+describe('wheel zoom', () => {
+  const zoomGame = (player, overrides = {}) => {
+    const game = {
+      state: 'mission', fpsMode: false, fpsYaw: 0, fpsPitch: 0, player,
+      camZoom: CAMERA_ZOOM.default, camZoomTarget: CAMERA_ZOOM.default,
+      input: { mouse: { wheelDelta: 0 } }, world: { groundAt: () => 0 },
+      ...overrides,
+    };
+    Object.setPrototypeOf(game, Game.prototype);
+    return game;
+  };
+  const model = () => {
+    const group = new THREE.Group();
+    const material = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    group.add(new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), material));
+    return { group, material, mesh: group.children[0] };
+  };
+  const unit = () => { const m = model(); return { player: { ...soldier(), dead: false, group: m.group, weaponId: 'rifle' }, ...m }; };
+
+  it('scrolls down to pull the boom back and up to push it in, clamped at both ends', () => {
+    const game = zoomGame(unit().player);
+    game.input.mouse.wheelDelta = 100; // one notch down
+    Game.prototype.updateCameraZoom.call(game, .016);
+    expect(game.camZoomTarget).toBeCloseTo(CAMERA_ZOOM.default + CAMERA_ZOOM.step);
+    expect(game.input.mouse.wheelDelta).toBe(0); // consumed, so the observer cam never sees it
+    game.input.mouse.wheelDelta = -100;
+    Game.prototype.updateCameraZoom.call(game, .016);
+    expect(game.camZoomTarget).toBeCloseTo(CAMERA_ZOOM.default);
+    for (let i = 0; i < 40; i++) { game.input.mouse.wheelDelta = -400; Game.prototype.updateCameraZoom.call(game, .016); }
+    expect(game.camZoomTarget).toBe(0);
+    for (let i = 0; i < 40; i++) { game.input.mouse.wheelDelta = 400; Game.prototype.updateCameraZoom.call(game, .016); }
+    expect(game.camZoomTarget).toBe(1);
+  });
+
+  it('eases the boom toward the new target instead of snapping to it', () => {
+    const game = zoomGame(unit().player);
+    game.input.mouse.wheelDelta = 100;
+    Game.prototype.updateCameraZoom.call(game, .016);
+    expect(game.camZoom).toBeGreaterThan(CAMERA_ZOOM.default);
+    expect(game.camZoom).toBeLessThan(game.camZoomTarget);
+    for (let i = 0; i < 120; i++) Game.prototype.updateCameraZoom.call(game, .016);
+    expect(game.camZoom).toBeCloseTo(game.camZoomTarget, 3);
+  });
+
+  it('keeps the shot on the centred crosshair at every boom length, clamped or not', () => {
+    for (const zoom of [0, .25, CAMERA_ZOOM.default, .8, 1]) {
+      // pitch -.2 hangs the boom clear of the ground; +.9 drives it underground so
+      // the terrain clamp lifts it off the ideal boom axis
+      for (const pitch of [-.2, .9]) {
+        const player = soldier();
+        const game = aimGame(player, {}, { camZoom: zoom, fpsYaw: .6, fpsPitch: pitch, input: { mouse: { dx: 0, dy: 0, right: false, rightPressed: false }, mobile: false } });
+        Game.prototype.updateAim.call(game, .016);
+        const view = Game.prototype.shoulderView.call(game, player);
+        const camera = new THREE.PerspectiveCamera(view.rig.fov, 16 / 9, .1, 700);
+        camera.position.copy(view.position); camera.lookAt(view.focus); camera.updateMatrixWorld(true);
+        // the round is solved from the muzzle onto a point on the crosshair ray;
+        // projecting that convergence point must land dead centre on screen
+        const muzzle = new THREE.Vector3(player.group.position.x, player.group.position.y + 1.35, player.group.position.z);
+        const converge = view.position.clone().addScaledVector(view.ray, view.rig.dist + 60);
+        const shot = muzzle.clone().addScaledVector(player.aim, converge.distanceTo(muzzle)).project(camera);
+        expect(Math.hypot(shot.x, shot.y)).toBeLessThan(.005);
+      }
+    }
+  });
+
+  it('fades the player model out as the camera closes in and hands the originals back', () => {
+    const { player, mesh, material } = unit();
+    const game = zoomGame(player);
+    game.camZoom = game.camZoomTarget = CAMERA_ZOOM.default;
+    Game.prototype.updateCameraZoom.call(game, .016);
+    expect(mesh.material).toBe(material); // wide boom: nothing between camera and crosshair
+
+    game.camZoom = game.camZoomTarget = 0;
+    Game.prototype.updateCameraZoom.call(game, .016);
+    expect(mesh.material).not.toBe(material);
+    expect(mesh.material.transparent).toBe(true);
+    expect(mesh.material.opacity).toBeCloseTo(CAMERA_ZOOM.minOpacity);
+    expect(material.opacity).toBe(1); // the shared original is never mutated
+
+    game.camZoom = game.camZoomTarget = 1;
+    Game.prototype.updateCameraZoom.call(game, .016);
+    expect(mesh.material).toBe(material);
+  });
+
+  it('ramps the fade smoothly and monotonically across the zoom-in', () => {
+    const { player, mesh } = unit();
+    const game = zoomGame(player);
+    let previous = -1;
+    for (let zoom = 0; zoom <= CAMERA_ZOOM.fadeFrom + .05; zoom += .01) {
+      game.camZoom = game.camZoomTarget = zoom;
+      Game.prototype.updateCameraZoom.call(game, .016);
+      const opacity = mesh.material.opacity ?? 1;
+      expect(opacity).toBeGreaterThanOrEqual(previous - 1e-6);
+      previous = opacity;
+    }
+    expect(previous).toBeCloseTo(1);
+  });
+
+  it('leaves the model alone in first person and while riding a platform', () => {
+    const { player, mesh, material } = unit();
+    for (const state of [{ fpsMode: true }, { fpsMode: false, extra: 'mountedMotorcycle' }]) {
+      const game = zoomGame(player, { fpsMode: state.fpsMode });
+      if (state.extra) player[state.extra] = { group: new THREE.Group(), vehicleKind: 'bike' };
+      game.camZoom = game.camZoomTarget = 0;
+      Game.prototype.updateCameraZoom.call(game, .016);
+      expect(mesh.material).toBe(material);
+      if (state.extra) player[state.extra] = null;
+    }
   });
 });
 

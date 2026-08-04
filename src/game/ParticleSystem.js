@@ -4,7 +4,7 @@ export class ParticleSystem {
   constructor(scene, heightAt = null) {
     this.scene=scene;this.heightAt=heightAt;this.fragments=[];this.rings=[];this.stains=[];this.quality=1;this.cameraPosition=new THREE.Vector3();this.cameraQuaternion=new THREE.Quaternion();
     const geo=new THREE.BoxGeometry(.16,.16,.16);
-    for(let i=0;i<260;i++){const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xff6b3d,transparent:true}));mesh.visible=false;scene.add(mesh);this.fragments.push({mesh,velocity:new THREE.Vector3(),life:0,maxLife:1,isWater:false})}
+    for(let i=0;i<260;i++){const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:0xff6b3d,transparent:true}));mesh.visible=false;scene.add(mesh);this.fragments.push({mesh,velocity:new THREE.Vector3(),life:0,maxLife:1,isWater:false,buoyant:false})}
     const ringGeo=new THREE.RingGeometry(.35,.62,10);for(let i=0;i<28;i++){const mesh=new THREE.Mesh(ringGeo,new THREE.MeshBasicMaterial({color:0x343443,transparent:true,side:THREE.DoubleSide,depthWrite:false}));mesh.visible=false;scene.add(mesh);this.rings.push({mesh,life:0,maxLife:1})}
     // pooled blood stains: reused meshes, faded out and hidden after 3s — no allocation per hit
     const stainGeo=new THREE.CircleGeometry(.55,9);
@@ -78,6 +78,25 @@ export class ParticleSystem {
     for(let n=0;n<count;n++){const p=this.fragments.find(x=>x.life<=0);if(!p)break;p.life=p.maxLife=.4+Math.random()*.5;p.mesh.visible=true;p.mesh.material.color.setHex(n%3===0?0xd42535:0x8e1220);p.mesh.material.opacity=1;p.mesh.position.copy(position);p.mesh.scale.setScalar(.35+Math.random()*.8);p.velocity.set((Math.random()-.5)*5,2+Math.random()*4.5,(Math.random()-.5)*5);if(direction)p.velocity.addScaledVector(direction,3.5)}
     const s=this.stains.find(x=>x.life<=0);if(s){s.life=3;s.mesh.visible=true;s.mesh.position.set(position.x+(Math.random()-.5)*.8,this.ground(position.x,position.z)+.04,position.z+(Math.random()-.5)*.8);s.mesh.rotation.z=Math.random()*Math.PI*2;s.mesh.scale.setScalar(.7+Math.random()*.9);s.mesh.material.opacity=.85}
   }
+  // burning debuff: a lick of flame climbing off whatever is on fire. Buoyant
+  // fragments so the embers rise and drag to a stop instead of arcing like debris.
+  flame(position, scale = 1) {
+    if (!position) return;
+    if (position.distanceToSquared(this.cameraPosition) > 90 * 90) return;
+    const count = this.quality < .55 ? 1 : this.quality < .8 ? 2 : 3;
+    for (let n = 0; n < count; n++) {
+      const p = this.fragments.find(x => x.life <= 0);
+      if (!p) break;
+      p.isWater = false; p.buoyant = true;
+      p.life = p.maxLife = .26 + Math.random() * .3;
+      p.mesh.visible = true;
+      p.mesh.material.color.setHex(n % 3 === 0 ? 0xffe66c : n % 3 === 1 ? 0xff8a2b : 0xff3d1c);
+      p.mesh.material.opacity = 1;
+      p.mesh.position.set(position.x + (Math.random() - .5) * scale, position.y + .35 + Math.random() * scale, position.z + (Math.random() - .5) * scale);
+      p.mesh.scale.setScalar((.24 + Math.random() * .34) * scale);
+      p.velocity.set((Math.random() - .5) * 1.3, 2.6 + Math.random() * 2.1, (Math.random() - .5) * 1.3);
+    }
+  }
   waterSplash(position, velocityY = 5, count = 15, scale = 1.0) {
     const colors = [0xffffff, 0xd0f0ff, 0x8be5ff, 0x5cbaff];
     for (let n = 0; n < count; n++) {
@@ -115,9 +134,16 @@ export class ParticleSystem {
     for(const p of this.fragments){
       if(p.life<=0)continue;
       p.life-=dt;
-      if(p.life<=0){p.mesh.visible=false;p.isWater=false;continue}
-      p.velocity.y-=18*dt;
+      if(p.life<=0){p.mesh.visible=false;p.isWater=false;p.buoyant=false;continue}
+      if (p.buoyant) { p.velocity.y += 5.5 * dt; p.velocity.multiplyScalar(Math.pow(.3, dt)); }
+      else p.velocity.y-=18*dt;
       p.mesh.position.addScaledVector(p.velocity,dt);
+      if (p.buoyant) {
+        p.mesh.rotation.x += dt * 5; p.mesh.rotation.y += dt * 7;
+        p.mesh.scale.multiplyScalar(Math.pow(.42, dt));
+        p.mesh.material.opacity = Math.min(1, p.life / .18);
+        continue;
+      }
       if (p.isWater) {
         if (p.mesh.position.y < 0.12) {
           p.life = 0;

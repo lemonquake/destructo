@@ -40,8 +40,13 @@ export class Input {
         this.mouse.right = false;
       }
     });
+    // Normalise to pixels before storing: Firefox reports wheel notches in lines
+    // (deltaMode 1) and page-scrolls in screens (deltaMode 2), so a raw deltaY is
+    // ~3 there and ~100 in Chrome for the same flick. Deltas accumulate because a
+    // fast scroll fires several events inside one frame.
     addEventListener('wheel', e => {
-      this.mouse.wheelDelta = e.deltaY;
+      const scale = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? innerHeight : 1;
+      this.mouse.wheelDelta += e.deltaY * scale;
     }, { passive: true });
     this.domElement.addEventListener('contextmenu', e => e.preventDefault());
     if (this.mobile) this.setupMobile();

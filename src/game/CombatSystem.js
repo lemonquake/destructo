@@ -14,6 +14,16 @@ const STYLE_NAMES=Object.keys(PROJECTILE_GEOS),DETAIL_STYLES=new Set(['grenade',
 // last frame's travel so fast bullets render as continuous tracers instead of dots
 const STYLE_LENGTHS={slug:.18,dart:.4,lance:.55,tracer:.28,grenade:.34,pellet:.11,bolt:.2,mine:.1,rocket:.52,missile:.52,arc:.33,plasma:.34,tank_shell_brown:.65,tank_shell_yellow:.45,tank_shell_blue:.45,tank_shell_red:.65};
 const WORLD_GRAVITY=18,POWER_REFERENCE=50,POOL_SIZE=2048,MINE_POOL_SIZE=256,DETAIL_POOL_SIZE=128,SPATIAL_CELL=8;
+// ── Fire debuff ──────────────────────────────────────────────────────────────
+// Every explosion leaves burning damage-over-time on whatever it caught: rockets,
+// missiles, mortars, grenade launchers, thrown grenades, mines, tank rounds and
+// the death blasts of vehicles and structures all route through explode()/radial()
+// and therefore all set fire. Both the per-second bite and how long the fire lasts
+// scale with the blast's own damage and how close the victim was to the centre —
+// a point-blank tank round burns for the full three seconds, a rocket that clipped
+// someone at the rim burns for one. `referenceDamage` is roughly the biggest blast
+// in the game (the 145-damage factory detonation is above it and simply clamps).
+export const BURN=Object.freeze({minSeconds:1,maxSeconds:3,dpsRatio:.2,referenceDamage:120,tickSeconds:.5,edgeBite:.3,fxInterval:.09});
 export const PROJECTILE_SPREAD_SCALE=.7;
 // How far above itself a projectile may claim a surface as its floor. A body
 // with legs gets World.STEP_UP here so it can mount a kerb; a bullet gets almost
@@ -41,6 +51,7 @@ const targetHeight=target=>target?.type==='unit'?1.2:target?.type==='vehicle'?1.
 export class CombatSystem {
   constructor(scene, particles, getTargets, onDeath, onDamage = null, isHostile = null, heightAt = null, onStat = null, getImpulseTargets = null, worldQuery = null) {
     this.scene=scene;this.particles=particles;this.getTargets=getTargets;this.onDeath=onDeath;this.onDamage=onDamage;this.isHostile=isHostile||((a,b)=>a!==b);this.heightAt=heightAt;this.onStat=onStat;this.getImpulseTargets=getImpulseTargets||(()=>[]);this.world=worldQuery;
+    this.burning=new Set();this._burnPoint=new THREE.Vector3();
     this.pool=[];this.freeSlots=[];this.freeMineSlots=[];this.activeSlots=new Set();this.activeCount=0;this.activeMines=0;this.projectileSpawnDenied=0;this.hash=new Map();this._candidateSet=new Set();this._dummy=new THREE.Object3D();this._matrix=new THREE.Matrix4();this._color=new THREE.Color();this._travel=new THREE.Vector3();this._spreadRight=new THREE.Vector3();this._spreadUp=new THREE.Vector3();this._spreadAxis=new THREE.Vector3();
     for(let i=0;i<POOL_SIZE+MINE_POOL_SIZE;i++){const mineSlot=i>=POOL_SIZE;this.pool.push({index:i,mineSlot,active:false,position:new THREE.Vector3(),previous:new THREE.Vector3(),velocity:new THREE.Vector3(),age:0,maxAge:Infinity,shooter:null,weapon:null,mine:false,trailTimer:0,detail:null,style:'slug',scale:1});(mineSlot?this.freeMineSlots:this.freeSlots).push((mineSlot?POOL_SIZE+MINE_POOL_SIZE:POOL_SIZE)-1-(i-(mineSlot?POOL_SIZE:0)))}
     this.instanceMeshes={};for(const style of STYLE_NAMES){const material=new THREE.MeshBasicMaterial({color:0xffffff,vertexColors:true,toneMapped:false});const mesh=new THREE.InstancedMesh(PROJECTILE_GEOS[style],material,POOL_SIZE);mesh.count=0;mesh.frustumCulled=false;mesh.castShadow=false;mesh.receiveShadow=false;scene.add(mesh);this.instanceMeshes[style]=mesh}
@@ -162,7 +173,7 @@ export class CombatSystem {
     }
     const terrain=this.terrainHit(start,end);if(terrain&&terrain.t<bestT){bestT=terrain.t;best={t:terrain.t,point:pointAt(terrain.t),normal:new THREE.Vector3(0,1,0),surface:terrain.surface,target:null,reason:'terrain'}}const boundary=this.boundsHit(start,end);if(boundary!==null&&boundary<bestT)best={t:boundary,point:pointAt(boundary),normal:p.velocity.clone().setY(0).normalize().negate(),surface:'boundary',target:null,reason:'bounds'};return best
   }
-  update(dt){this.rebuildSpatialHash();for(const slot of this.activeSlots){const p=this.pool[slot];if(!p.active)continue;p.age+=dt;if(p.weapon.crimson){p.trailTimer-=dt;if(p.trailTimer<=0){p.trailTimer=.055;this.particles?.impact?.(p.position,0xff102c,{kind:'energy'})}}
+  update(dt){this.rebuildSpatialHash();this.updateBurning(dt);for(const slot of this.activeSlots){const p=this.pool[slot];if(!p.active)continue;p.age+=dt;if(p.weapon.crimson){p.trailTimer-=dt;if(p.trailTimer<=0){p.trailTimer=.055;this.particles?.impact?.(p.position,0xff102c,{kind:'energy'})}}
       if(p.mine){const hit=this.findImpact(p,p.position,p.position);if(hit){this.explode(p,hit);continue}if(p.age>p.maxAge){this.release(p);continue}}
       else{p.previous.copy(p.position);const gravity=ballisticGravity(p.weapon);p.position.addScaledVector(p.velocity,dt);if(gravity)p.position.y-=.5*gravity*dt*dt;p.velocity.y-=gravity*dt;if(!finiteVector(p.position)||!finiteVector(p.velocity)){this.release(p);continue}const impact=this.findImpact(p,p.previous,p.position);this.particles?.bulletTrail?.(p.previous,impact?impact.point:p.position,p.weapon.color);if(impact){p.position.copy(impact.point);if(impact.reason==='bounds'){this.particles?.impact?.(impact.point,p.weapon.color,{kind:'boundary',normal:impact.normal,surface:'boundary'});this.release(p)}else if(p.weapon.explosive)this.explode(p,impact);else this.hit(p,impact);continue}}
       if(p.detail){if(p.style==='grenade'){p.detail.mesh.rotation.x+=dt*12;p.detail.mesh.rotation.y+=dt*8}this.syncDetail(p)}}this.syncInstances()
@@ -196,15 +207,68 @@ export class CombatSystem {
       if(dist>radius)continue;
       const falloff=1-dist/radius,dir=target.group.position.clone().sub(pos).setY(.4).normalize();
       this.applyDamage(target,p.weapon.damage*falloff,p.shooter,dir,p.weapon.knockback*falloff,true);
+      // burn after the blast, never before: anything the explosion already killed
+      // is skipped by applyBurn rather than left smouldering on a corpse
+      this.applyBurn(target,p.weapon.damage,falloff,p.shooter);
       if (isBlue && target.freeze !== undefined) { target.freeze = Math.max(target.freeze || 0, 1.8 * falloff); }
     }
     this.applyRadialPhysics(pos,(isRed ? 8.5 : isBlue ? 6.5 : 5.2)*(p.weapon.projectileScale||1),p.weapon.knockback||12);
     this.release(p);
   }
+  // ── fire debuff ────────────────────────────────────────────────────────────
+  // `falloff` is 1 at the centre of the blast and 0 at its rim; `blastDamage` is
+  // the explosion's undiminished damage, i.e. its strength. Duration reads mostly
+  // off proximity but a big blast still lights people up near its edge, so the
+  // two are multiplied rather than averaged. Re-catching an already-burning target
+  // keeps whichever fire is worse instead of stacking a second one.
+  applyBurn(target,blastDamage,falloff,source=null){
+    if(!target||target.dead||target.invulnerable||!Number.isFinite(target.hp)||!(blastDamage>0))return;
+    const proximity=THREE.MathUtils.clamp(falloff,0,1),power=THREE.MathUtils.clamp(blastDamage/BURN.referenceDamage,0,1);
+    const intensity=THREE.MathUtils.clamp(proximity*(.55+.45*power),0,1);
+    const seconds=BURN.minSeconds+(BURN.maxSeconds-BURN.minSeconds)*intensity;
+    const dps=BURN.dpsRatio*blastDamage*(BURN.edgeBite+(1-BURN.edgeBite)*proximity);
+    if(dps<=0)return;
+    const fresh=!(target.burnTimer>0);
+    target.burnDps=Math.max(target.burnDps||0,dps);
+    target.burnTimer=Math.max(target.burnTimer||0,seconds);
+    if(fresh){target.burnTick=0;target.burnFxTimer=0}
+    target.burnSource=source||target.burnSource||null;
+    this.burning.add(target);
+    if(fresh)this.onBurn?.(target,target.burnDps,target.burnTimer);
+  }
+  clearBurn(target){if(!target)return;target.burnTimer=0;target.burnDps=0;target.burnTick=0;target.burnFxTimer=0;target.burnSource=null;this.burning.delete(target)}
+  // Fire is billed in half-second bites so the damage numbers stay readable, with
+  // whatever is left paid out on the final partial tick. Every bite goes through
+  // applyDamage as explosive damage, so armour, shields, Blastproof and kill
+  // crediting all behave exactly as they do for the blast that started the fire.
+  updateBurning(dt){
+    if(!this.burning.size||!(dt>0))return;
+    for(const target of [...this.burning]){
+      if(!target||target.dead||!(target.burnTimer>0)){this.clearBurn(target);continue}
+      const step=Math.min(dt,target.burnTimer);
+      target.burnTimer-=step;target.burnTick=(target.burnTick||0)+step;
+      const expired=target.burnTimer<=1e-4;
+      if(target.burnTick>=BURN.tickSeconds||expired){
+        const bite=target.burnDps*target.burnTick;target.burnTick=0;
+        this.applyDamage(target,bite,target.burnSource,null,0,true,false,'burn');
+      }
+      if(target.dead||expired){this.clearBurn(target);continue}
+      target.burnFxTimer=(target.burnFxTimer||0)-step;
+      if(target.burnFxTimer<=0&&target.group?.position){
+        target.burnFxTimer=BURN.fxInterval;
+        this.particles?.flame?.(this._burnPoint.copy(target.group.position),THREE.MathUtils.clamp((target.radius||1)*1.15,.6,2.6));
+      }
+    }
+  }
   applyPhysicsImpulse(target,direction,strength){if(!target?.velocity||!direction||!strength||target.carried||target.placed)return;const mass=Math.max(.75,target.mass||1),dir=direction.clone().normalize(),scale=strength/Math.pow(mass,.82);target.velocity.addScaledVector(dir,scale);target.velocity.y=Math.min(target.velocity.y,Math.max(1.4,scale*.32));target.physicsActive=true;target.falling=true;target.grounded=false;if(target.angularVelocity){target.angularVelocity.x+=(dir.z+(Math.random()-.5)*.45)*scale*.32;target.angularVelocity.y+=(Math.random()-.5)*scale*.18;target.angularVelocity.z+=(-dir.x+(Math.random()-.5)*.45)*scale*.32}}
   applyRadialPhysics(position,radius,knockback){for(const target of this.getImpulseTargets()){if(!target||target.carried||target.placed)continue;const dist=target.group.position.distanceTo(position);if(dist>radius)continue;const falloff=Math.max(.12,1-dist/radius),dir=target.group.position.clone().sub(position).setY(Math.max(.16,.45-dist/radius*.2)).normalize();this.applyPhysicsImpulse(target,dir,knockback*falloff)}}
-  applyDamage(target,damage,source,direction,knockback=0,explosive=false,reflected=false){if(target?.invulnerable||target.dead||target.critical)return;const cover=target.mountedTurret||target.mountedBunker||target.mountedMotorcycle;if(cover&&!cover.dead)return this.applyDamage(cover,damage,source,direction,knockback,explosive,reflected);if(Number.isFinite(target.armor))damage*=Math.max(.15,1-target.armor);if(target.barrierTimer>0)damage*=.35;if(target.passive?.id==='thickskin')damage*=.88;else if(target.team&&target.team!=='neutral'){for(const ally of this.getTargets()){if(!ally||ally.dead||ally===target||ally.passive?.id!=='thickskin'||this.isHostile(ally.team,target.team))continue;if(ally.group.position.distanceToSquared(target.group.position)<25){damage*=.92;break}}}if(explosive&&target.passive?.id==='blastproof')damage*=.6;if(target.passive?.id==='lucky'&&Math.random()<.12)damage=0;if(target.rearPlate&&direction&&target.aim&&direction.dot(target.aim)>.35)damage*=.6;if(target.shield>0&&damage>0){const soaked=Math.min(target.shield,damage);target.shield-=soaked;damage-=soaked}target.hp-=damage;if(damage>0&&target.passive?.id==='adrenaline')target.statusTimer=Math.max(target.statusTimer||0,3);if(damage>0&&source?.passive?.id==='vampiric'&&Number.isFinite(source.maxHp))source.hp=Math.min(source.maxHp,source.hp+damage*.12);if(!reflected&&damage>0&&target.passive?.id==='thorns'&&source&&!source.dead&&Number.isFinite(source.hp))this.applyDamage(source,damage*.1,target,null,0,false,true);if(target.hp<=0&&target.passive?.id==='laststand'&&!target.lastStandUsed){target.lastStandUsed=true;target.hp=1}this.onDamage?.(target,damage,source,direction,explosive);if(target.velocity&&direction&&knockback&&target.passive?.id!=='stonefeet'){const dir=direction.clone().normalize();target.velocity.addScaledVector(dir,knockback);if(knockback>6){target.state='tumble';target.stun=Math.min(1.5,.25+knockback*.07)}}if(target.hp<=0){target.hp=0;if(target.delayedExplosion){target.critical=true;target.explosionTimer=3;target.lastDamageSource=source;target.lastDamageExplosive=explosive;return}target.dead=true;this.onDeath(target,source,{explosive})}}
-  radial(position,radius,damage,source,knockback=8){this.particles?.burst?.(position.clone().add(new THREE.Vector3(0,.5,0)),0xffb44a,28,9);for(const target of this.getTargets()){if(!target||target.dead||target===source||target.mountedTurret||target.mountedBunker||(source&&!this.canHit(source,target)))continue;const dist=target.group.position.distanceTo(position);if(dist>radius)continue;const falloff=1-dist/radius,dir=target.group.position.clone().sub(position).setY(.35).normalize();this.applyDamage(target,damage*falloff,source,dir,knockback*falloff,true)}this.applyRadialPhysics(position,radius,knockback)}
+  // `kind` only ever reaches the onDamage hook, so the presentation layer can tell
+  // a burning tick from a bullet and skip the hit sound, blood spray and hit flash.
+  applyDamage(target,damage,source,direction,knockback=0,explosive=false,reflected=false,kind='hit'){if(target?.invulnerable||target.dead||target.critical)return;const cover=target.mountedTurret||target.mountedBunker||target.mountedMotorcycle;if(cover&&!cover.dead)return this.applyDamage(cover,damage,source,direction,knockback,explosive,reflected,kind);if(Number.isFinite(target.armor))damage*=Math.max(.15,1-target.armor);if(target.barrierTimer>0)damage*=.35;if(target.passive?.id==='thickskin')damage*=.88;else if(target.team&&target.team!=='neutral'){for(const ally of this.getTargets()){if(!ally||ally.dead||ally===target||ally.passive?.id!=='thickskin'||this.isHostile(ally.team,target.team))continue;if(ally.group.position.distanceToSquared(target.group.position)<25){damage*=.92;break}}}if(explosive&&target.passive?.id==='blastproof')damage*=.6;if(target.passive?.id==='lucky'&&Math.random()<.12)damage=0;if(target.rearPlate&&direction&&target.aim&&direction.dot(target.aim)>.35)damage*=.6;if(target.shield>0&&damage>0){const soaked=Math.min(target.shield,damage);target.shield-=soaked;damage-=soaked}target.hp-=damage;if(damage>0&&target.passive?.id==='adrenaline')target.statusTimer=Math.max(target.statusTimer||0,3);if(damage>0&&source?.passive?.id==='vampiric'&&Number.isFinite(source.maxHp))source.hp=Math.min(source.maxHp,source.hp+damage*.12);if(!reflected&&damage>0&&target.passive?.id==='thorns'&&source&&!source.dead&&Number.isFinite(source.hp))this.applyDamage(source,damage*.1,target,null,0,false,true);if(target.hp<=0&&target.passive?.id==='laststand'&&!target.lastStandUsed){target.lastStandUsed=true;target.hp=1}this.onDamage?.(target,damage,source,direction,explosive,kind);if(target.velocity&&direction&&knockback&&target.passive?.id!=='stonefeet'){const dir=direction.clone().normalize();target.velocity.addScaledVector(dir,knockback);if(knockback>6){target.state='tumble';target.stun=Math.min(1.5,.25+knockback*.07)}}if(target.hp<=0){target.hp=0;if(target.delayedExplosion){target.critical=true;target.explosionTimer=3;target.lastDamageSource=source;target.lastDamageExplosive=explosive;return}target.dead=true;this.onDeath(target,source,{explosive})}}
+  // `options.burn:false` marks a blast that is concussive rather than incendiary —
+  // the Shockwave/Ground Pound/Dash Strike abilities borrow this radial for their
+  // kinetic hits and have no business setting anyone alight.
+  radial(position,radius,damage,source,knockback=8,options={}){this.particles?.burst?.(position.clone().add(new THREE.Vector3(0,.5,0)),0xffb44a,28,9);for(const target of this.getTargets()){if(!target||target.dead||target===source||target.mountedTurret||target.mountedBunker||(source&&!this.canHit(source,target)))continue;const dist=target.group.position.distanceTo(position);if(dist>radius)continue;const falloff=1-dist/radius,dir=target.group.position.clone().sub(position).setY(.35).normalize();this.applyDamage(target,damage*falloff,source,dir,knockback*falloff,true);if(options.burn!==false)this.applyBurn(target,damage,falloff,source)}this.applyRadialPhysics(position,radius,knockback)}
   release(p){if(!p?.active)return;const wasMine=p.mine;p.active=false;this.activeSlots.delete(p.index);p.shooter=null;p.weapon=null;if(p.detail){p.detail.active=false;p.detail.mesh.visible=false;p.detail=null}if(wasMine){this.freeMineSlots.push(p.index);this.activeMines=Math.max(0,this.activeMines-1)}else{this.freeSlots.push(p.index);this.activeCount=Math.max(0,this.activeCount-1)}}
   diagnostics(){return{active:this.activeCount,mines:this.activeMines,poolSize:POOL_SIZE,minePoolSize:MINE_POOL_SIZE,free:this.freeSlots.length,freeMines:this.freeMineSlots.length,denied:this.projectileSpawnDenied,poolUsage:Math.round(this.activeCount/POOL_SIZE*100),effects:this.particles?.activeEffectCount?.()||0,activeProjectiles:this.activeCount,freeProjectiles:this.freeSlots.length,projectileSpawnDenied:this.projectileSpawnDenied}}
 }

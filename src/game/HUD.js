@@ -20,6 +20,8 @@ export class HUD {
       "To build a Battle Tank: Stack Crates to fill the entire 3x2x2 cube (12 Crates total)!",
       "Need health, shield, or ammo? Open a loose Crate in the field by hitting F!",
       "Move the mouse to steer your view — the crosshair stays centered. Right-click to LOCK-ON!",
+      "Scroll the mouse wheel to zoom the camera. Zoom right in and your Destructo fades out of the way!",
+      "Explosions set you ON FIRE — burning ticks for 1 to 3 seconds depending on the blast and how close you were.",
       "Press P to switch to First-Person Shooter mode! Look around and target enemies directly!",
       "Adjust Mouse Sensitivity from the Settings or Pause menu to tune how fast the camera turns.",
       "Crate Magnetism: Hold a Crate and get near the D-Builder to snap it to a cell.",
@@ -92,6 +94,7 @@ export class HUD {
     if (player.buffs?.speed > 0) buffs.push(`SPEED ${Math.ceil(player.buffs.speed)}s`);
     if (player.buffs?.damage > 0) buffs.push(`DMG ${Math.ceil(player.buffs.damage)}s`);
     if (player.buffs?.rapid > 0) buffs.push(`RAPID ${Math.ceil(player.buffs.rapid)}s`);
+    if (player.burnTimer > 0) buffs.push(`ON FIRE ${player.burnTimer.toFixed(1)}s · ${Math.round(player.burnDps)} DPS`);
     if (player.shield > 0) buffs.push('SHIELD');
     if (player.carriedCrate?.questHeavy) buffs.push('HEAVY CARGO · SPEED 50% · NO JUMP');
     this.el['buff-readout'].textContent = buffs.join(' · ');
